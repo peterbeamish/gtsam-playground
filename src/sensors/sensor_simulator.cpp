@@ -97,6 +97,7 @@ LidarData LidarSimulator::getLidarData() {
         data.x = x_;
         data.y = y_;
         data.theta = theta_;
+        data.confidence = calculateConfidence(x_, y_);
         data.timestamp = last_update_; // Use last update time
         return data;
     }
@@ -128,12 +129,15 @@ LidarData LidarSimulator::getLidarData() {
             data.theta = theta_ + noise_dist_(rng_);
         }
         
+        // Calculate confidence based on location
+        data.confidence = calculateConfidence(data.x, data.y);
         data.timestamp = now;
     } else {
         // Return cached data if not time for update yet
         data.x = x_;
         data.y = y_;
         data.theta = theta_;
+        data.confidence = calculateConfidence(x_, y_);
         data.timestamp = last_update_;
     }
     
@@ -148,4 +152,24 @@ void LidarSimulator::enable() {
 void LidarSimulator::disable() {
     enabled_ = false;
     std::cout << "LiDAR sensor disabled" << std::endl;
+}
+
+double LidarSimulator::calculateConfidence(double x, double y) const {
+    // Define a low-confidence area (not in center, max 1/6 of total area)
+    // Let's create a rectangular area in the top-right quadrant
+    // Map bounds: approximately -10 to +10 in both x and y
+    // Low confidence area: x from 3 to 7, y from 3 to 7 (4x4 = 16 units, ~1/6 of 20x20 map)
+    
+    const double low_conf_x_min = 3.0;
+    const double low_conf_x_max = 7.0;
+    const double low_conf_y_min = 3.0;
+    const double low_conf_y_max = 7.0;
+    
+    // Check if we're in the low-confidence area
+    if (x >= low_conf_x_min && x <= low_conf_x_max && 
+        y >= low_conf_y_min && y <= low_conf_y_max) {
+        return 0.2;  // 20% confidence in low-confidence area
+    }
+    
+    return 1.0;  // 100% confidence in normal areas
 }

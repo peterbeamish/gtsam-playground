@@ -14,6 +14,7 @@ struct LidarData {
     double x;
     double y;
     double theta;
+    double confidence;  // Confidence value between 0.0 and 1.0
     std::chrono::steady_clock::time_point timestamp;
 };
 
@@ -54,6 +55,9 @@ public:
     void enable();
     void disable();
     bool isEnabled() const { return enabled_; }
+    
+    // Confidence calculation
+    double calculateConfidence(double x, double y) const;
     
 private:
     double update_rate_;

@@ -199,6 +199,7 @@ std::string SimpleWebUI::generateHTML() {
     html << "                    <div>X: <span class=\"value\" id=\"lidar-x\">0.00</span> m</div>\n";
     html << "                    <div>Y: <span class=\"value\" id=\"lidar-y\">0.00</span> m</div>\n";
         html << "                    <div>theta: <span class=\"value\" id=\"lidar-theta\">0.00</span>°</div>\n";
+    html << "                    <div>Confidence: <span class=\"value\" id=\"lidar-confidence\">100</span>%</div>\n";
     html << "                </div>\n";
     html << "            </div>\n";
     html << "            \n";
@@ -301,6 +302,7 @@ std::string SimpleWebUI::generateHTML() {
         html << "                    document.getElementById('lidar-x').textContent = data.lidar_x.toFixed(2);\n";
         html << "                    document.getElementById('lidar-y').textContent = data.lidar_y.toFixed(2);\n";
         html << "                    document.getElementById('lidar-theta').textContent = (data.lidar_theta * 180 / Math.PI).toFixed(1);\n";
+        html << "                    document.getElementById('lidar-confidence').textContent = (data.lidar_confidence * 100).toFixed(0);\n";
         html << "                    document.getElementById('odom-x').textContent = data.odom_x.toFixed(2);\n";
         html << "                    document.getElementById('odom-y').textContent = data.odom_y.toFixed(2);\n";
         html << "                    document.getElementById('odom-theta').textContent = (data.odom_theta * 180 / Math.PI).toFixed(1);\n";
@@ -374,6 +376,18 @@ std::string SimpleWebUI::generateHTML() {
     html << "                ctx.lineTo(canvas.width, i);\n";
     html << "                ctx.stroke();\n";
     html << "            }\n";
+    html << "            \n";
+    html << "            // Draw low-confidence area (red shaded rectangle)\n";
+    html << "            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';\n";
+    html << "            ctx.fillRect(centerX + 3 * scale, centerY - 7 * scale, 4 * scale, 4 * scale);\n";
+    html << "            ctx.strokeStyle = 'red';\n";
+    html << "            ctx.lineWidth = 2;\n";
+    html << "            ctx.strokeRect(centerX + 3 * scale, centerY - 7 * scale, 4 * scale, 4 * scale);\n";
+    html << "            \n";
+    html << "            // Add label for low-confidence area\n";
+    html << "            ctx.fillStyle = 'red';\n";
+    html << "            ctx.font = '12px Arial';\n";
+    html << "            ctx.fillText('Low Confidence Area', centerX + 3 * scale, centerY - 7 * scale - 5);\n";
     html << "            \n";
     html << "            // Scale factor for visualization\n";
     html << "            const scale = 50; // pixels per meter\n";

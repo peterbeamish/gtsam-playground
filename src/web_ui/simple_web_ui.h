@@ -20,6 +20,7 @@ struct SensorData {
     double lidar_x;
     double lidar_y;
     double lidar_theta;
+    double lidar_confidence;
     double odom_x;
     double odom_y;
     double odom_theta;

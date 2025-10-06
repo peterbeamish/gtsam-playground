@@ -163,6 +163,7 @@ private:
         sensor_data.lidar_x = current_lidar_.x;
         sensor_data.lidar_y = current_lidar_.y;
         sensor_data.lidar_theta = current_lidar_.theta;
+        sensor_data.lidar_confidence = current_lidar_.confidence;
         sensor_data.lidar_enabled = lidar_->isEnabled();
         
         // Independent odometry data

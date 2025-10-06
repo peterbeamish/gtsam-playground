@@ -103,12 +103,24 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     gtsam::Pose2 lidar_pose(lidar_data.x, lidar_data.y, lidar_data.theta);
     
     // Add measurement factor for lidar (soft constraint, not overriding the pose)
-    // Use a very weak noise model to avoid over-constraining the optimization
-    auto weak_lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3(0.5, 0.5, 0.1));
-    graph_.add(gtsam::PriorFactor<gtsam::Pose2>(closest_pose_key, lidar_pose, weak_lidar_noise));
+    // Use confidence-based noise model - lower confidence = higher noise
+    double base_noise_x = 0.5;
+    double base_noise_y = 0.5;
+    double base_noise_theta = 0.1;
+    
+    // Scale noise inversely with confidence (confidence 0.2 = 5x noise, confidence 1.0 = 1x noise)
+    double noise_scale = 1.0 / std::max(lidar_data.confidence, 0.1); // Prevent division by zero
+    double scaled_noise_x = base_noise_x * noise_scale;
+    double scaled_noise_y = base_noise_y * noise_scale;
+    double scaled_noise_theta = base_noise_theta * noise_scale;
+    
+    auto confidence_lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(
+        gtsam::Vector3(scaled_noise_x, scaled_noise_y, scaled_noise_theta));
+    graph_.add(gtsam::PriorFactor<gtsam::Pose2>(closest_pose_key, lidar_pose, confidence_lidar_noise));
     
     std::cout << "Added LiDAR measurement for pose " << (pose_count_ - 1) 
-              << ": " << lidar_pose << std::endl;
+              << ": " << lidar_pose << " (confidence: " << (lidar_data.confidence * 100) 
+              << "%, noise scale: " << noise_scale << ")" << std::endl;
     
     optimizeGraph();
 }
