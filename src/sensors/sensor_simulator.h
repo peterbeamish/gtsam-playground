@@ -17,6 +17,15 @@ struct LidarData {
     std::chrono::steady_clock::time_point timestamp;
 };
 
+struct OdometryData {
+    double x;
+    double y;
+    double theta;
+    double linear_velocity;
+    double angular_velocity;
+    std::chrono::steady_clock::time_point timestamp;
+};
+
 class WheelEncoderSimulator {
 public:
     WheelEncoderSimulator(double wheel_base = 0.5, double wheel_radius = 0.1);
@@ -38,7 +47,7 @@ public:
     LidarSimulator(double update_rate = 10.0, double noise_std = 0.05, 
                    double lag_mean_ms = 0.0, double lag_std_ms = 0.0);
     
-    void updateRobotPose(double x, double y, double theta);
+    void updateOdometry(const OdometryData& odom_data);
     LidarData getLidarData();
     
     // Sensor control methods
@@ -67,4 +76,9 @@ private:
     // Internal state for lag simulation
     std::chrono::steady_clock::time_point last_pose_update_;
     double cached_x_, cached_y_, cached_theta_;
+    
+    // Odometry integration state
+    double last_odom_x_, last_odom_y_, last_odom_theta_;
+    std::chrono::steady_clock::time_point last_odom_timestamp_;
+    bool has_previous_odom_;
 };

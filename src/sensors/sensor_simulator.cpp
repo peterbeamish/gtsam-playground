@@ -16,9 +16,14 @@ void WheelEncoderSimulator::updateRobotState(double linear_velocity, double angu
     double left_velocity = (linear_velocity - angular_velocity * wheel_base_ / 2.0) / wheel_radius_;
     double right_velocity = (linear_velocity + angular_velocity * wheel_base_ / 2.0) / wheel_radius_;
     
-    // Add noise
-    left_wheel_velocity_ = left_velocity + noise_dist_(rng_);
-    right_wheel_velocity_ = right_velocity + noise_dist_(rng_);
+    // Only add noise if there's actual movement (avoid phantom movement when stopped)
+    if (std::abs(linear_velocity) > 0.001 || std::abs(angular_velocity) > 0.001) {
+        left_wheel_velocity_ = left_velocity + noise_dist_(rng_);
+        right_wheel_velocity_ = right_velocity + noise_dist_(rng_);
+    } else {
+        left_wheel_velocity_ = left_velocity;  // No noise when stopped
+        right_wheel_velocity_ = right_velocity;
+    }
 }
 
 WheelEncoderData WheelEncoderSimulator::getEncoderData() {
@@ -38,20 +43,50 @@ LidarSimulator::LidarSimulator(double update_rate, double noise_std,
       lag_mean_ms_(lag_mean_ms), lag_std_ms_(lag_std_ms),
       lag_dist_(lag_mean_ms, lag_std_ms),
       last_pose_update_(std::chrono::steady_clock::now()),
-      cached_x_(0.0), cached_y_(0.0), cached_theta_(0.0) {
+      cached_x_(0.0), cached_y_(0.0), cached_theta_(0.0),
+      last_odom_x_(0.0), last_odom_y_(0.0), last_odom_theta_(0.0),
+      last_odom_timestamp_(std::chrono::steady_clock::now()),
+      has_previous_odom_(false) {
 }
 
-void LidarSimulator::updateRobotPose(double x, double y, double theta) {
-    // Store the latest pose for lag simulation
-    cached_x_ = x;
-    cached_y_ = y;
-    cached_theta_ = theta;
-    last_pose_update_ = std::chrono::steady_clock::now();
+void LidarSimulator::updateOdometry(const OdometryData& odom_data) {
+    auto now = std::chrono::steady_clock::now();
     
-    // Update current pose (for immediate use when no lag)
-    x_ = x;
-    y_ = y;
-    theta_ = theta;
+    if (has_previous_odom_) {
+        // Calculate time delta
+        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - last_odom_timestamp_).count() / 1000.0; // Convert to seconds
+        
+        if (dt > 0.001) { // Only integrate if there's meaningful time difference
+            // Integrate odometry to get absolute position
+            // Use the odometry position directly (it's already integrated)
+            x_ = odom_data.x;
+            y_ = odom_data.y;
+            theta_ = odom_data.theta;
+            
+            // Store for lag simulation
+            cached_x_ = x_;
+            cached_y_ = y_;
+            cached_theta_ = theta_;
+            last_pose_update_ = now;
+        }
+    } else {
+        // First odometry reading - initialize position
+        x_ = odom_data.x;
+        y_ = odom_data.y;
+        theta_ = odom_data.theta;
+        cached_x_ = x_;
+        cached_y_ = y_;
+        cached_theta_ = theta_;
+        last_pose_update_ = now;
+        has_previous_odom_ = true;
+    }
+    
+    // Store current odometry for next integration
+    last_odom_x_ = odom_data.x;
+    last_odom_y_ = odom_data.y;
+    last_odom_theta_ = odom_data.theta;
+    last_odom_timestamp_ = now;
 }
 
 LidarData LidarSimulator::getLidarData() {
