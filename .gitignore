@@ -1,0 +1,92 @@
+# Bazel build artifacts
+bazel-*
+bazel-bin/
+bazel-out/
+bazel-testlogs/
+bazel-genfiles/
+
+# Bazel cache and temporary files
+.bazel/
+.bazelrc.local
+.bazelversion
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+*.a
+*.lib
+
+# CMake build directories
+build/
+cmake-build-*/
+
+# Docker files (optional - uncomment if you don't want to track Docker configs)
+# Dockerfile
+# docker-compose.yml
+# .dockerignore
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Python (if any Python scripts are added)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node.js (if any web development tools are added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage reports
+coverage/
+*.gcov
+*.gcno
+*.gcda
+
+# Profiling data
+*.prof
+*.gprof
+
+# Core dumps
+core
+core.*
+
+# Editor backup files
+*~
+*.orig
+*.rej
