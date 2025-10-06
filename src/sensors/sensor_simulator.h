@@ -59,6 +59,10 @@ public:
     // Confidence calculation
     double calculateConfidence(double x, double y) const;
     
+    // Bias management for low-confidence areas
+    void updateBias(double x, double y);
+    void applyBias(double& x, double& y, double& theta) const;
+    
 private:
     double update_rate_;
     double x_;
@@ -76,6 +80,13 @@ private:
     double lag_mean_ms_;
     double lag_std_ms_;
     std::normal_distribution<double> lag_dist_;
+    
+    // Bias configuration for low-confidence areas
+    double bias_x_;
+    double bias_y_;
+    double bias_theta_;
+    bool bias_active_;
+    std::chrono::steady_clock::time_point bias_start_time_;
     
     // Internal state for lag simulation
     std::chrono::steady_clock::time_point last_pose_update_;

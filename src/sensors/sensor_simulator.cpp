@@ -42,6 +42,8 @@ LidarSimulator::LidarSimulator(double update_rate, double noise_std,
       noise_dist_(0.0, noise_std),
       lag_mean_ms_(lag_mean_ms), lag_std_ms_(lag_std_ms),
       lag_dist_(lag_mean_ms, lag_std_ms),
+      bias_x_(0.0), bias_y_(0.0), bias_theta_(0.0), bias_active_(false),
+      bias_start_time_(std::chrono::steady_clock::now()),
       last_pose_update_(std::chrono::steady_clock::now()),
       cached_x_(0.0), cached_y_(0.0), cached_theta_(0.0),
       last_odom_x_(0.0), last_odom_y_(0.0), last_odom_theta_(0.0),
@@ -97,7 +99,14 @@ LidarData LidarSimulator::getLidarData() {
         data.x = x_;
         data.y = y_;
         data.theta = theta_;
-        data.confidence = calculateConfidence(x_, y_);
+        
+        // Update bias based on current position (before applying bias)
+        updateBias(data.x, data.y);
+        
+        // Apply bias if in low-confidence area
+        applyBias(data.x, data.y, data.theta);
+        
+        data.confidence = calculateConfidence(data.x, data.y);
         data.timestamp = last_update_; // Use last update time
         return data;
     }
@@ -119,15 +128,30 @@ LidarData LidarSimulator::getLidarData() {
         
         if (lag_ms > 0 && lag_ms < time_since_cached) {
             // Use lagged pose (simulate delayed measurement)
-            data.x = cached_x_ + noise_dist_(rng_);
-            data.y = cached_y_ + noise_dist_(rng_);
-            data.theta = cached_theta_ + noise_dist_(rng_);
+            data.x = cached_x_;
+            data.y = cached_y_;
+            data.theta = cached_theta_;
         } else {
             // Use current pose (no lag or lag exceeds available history)
-            data.x = x_ + noise_dist_(rng_);
-            data.y = y_ + noise_dist_(rng_);
-            data.theta = theta_ + noise_dist_(rng_);
+            data.x = x_;
+            data.y = y_;
+            data.theta = theta_;
         }
+        
+        // Calculate confidence first to determine noise level
+        double confidence = calculateConfidence(data.x, data.y);
+        double noise_scale = (confidence < 0.5) ? 3.0 : 1.0;  // 3x noise in low-confidence areas
+        
+        // Apply noise with confidence-based scaling
+        data.x += noise_dist_(rng_) * noise_scale;
+        data.y += noise_dist_(rng_) * noise_scale;
+        data.theta += noise_dist_(rng_) * noise_scale;
+        
+        // Update bias based on current position (before applying bias)
+        updateBias(data.x, data.y);
+        
+        // Apply bias if in low-confidence area
+        applyBias(data.x, data.y, data.theta);
         
         // Calculate confidence based on location
         data.confidence = calculateConfidence(data.x, data.y);
@@ -137,7 +161,14 @@ LidarData LidarSimulator::getLidarData() {
         data.x = x_;
         data.y = y_;
         data.theta = theta_;
-        data.confidence = calculateConfidence(x_, y_);
+        
+        // Update bias based on current position (before applying bias)
+        updateBias(data.x, data.y);
+        
+        // Apply bias if in low-confidence area
+        applyBias(data.x, data.y, data.theta);
+        
+        data.confidence = calculateConfidence(data.x, data.y);
         data.timestamp = last_update_;
     }
     
@@ -172,4 +203,38 @@ double LidarSimulator::calculateConfidence(double x, double y) const {
     }
     
     return 1.0;  // 100% confidence in normal areas
+}
+
+void LidarSimulator::updateBias(double x, double y) {
+    // Define the same low-confidence area as in calculateConfidence
+    const double low_conf_x_min = 3.0;
+    const double low_conf_x_max = 7.0;
+    const double low_conf_y_min = 3.0;
+    const double low_conf_y_max = 7.0;
+    
+    bool in_low_conf_area = (x >= low_conf_x_min && x <= low_conf_x_max && 
+                            y >= low_conf_y_min && y <= low_conf_y_max);
+    
+    if (in_low_conf_area && !bias_active_) {
+        // Entering low-confidence area - generate new bias values
+        bias_x_ = (rng_() % 200 - 100) / 100.0;  // Random bias between -1.0 and 1.0 meters
+        bias_y_ = (rng_() % 200 - 100) / 100.0;  // Random bias between -1.0 and 1.0 meters
+        bias_theta_ = (rng_() % 360 - 180) * M_PI / 180.0;  // Random bias between -180 and 180 degrees
+        bias_active_ = true;
+        bias_start_time_ = std::chrono::steady_clock::now();
+        std::cout << "LiDAR bias activated: (" << bias_x_ << ", " << bias_y_ << ", " 
+                  << (bias_theta_ * 180.0 / M_PI) << " deg)" << std::endl;
+    } else if (!in_low_conf_area && bias_active_) {
+        // Exiting low-confidence area - deactivate bias
+        bias_active_ = false;
+        std::cout << "LiDAR bias deactivated" << std::endl;
+    }
+}
+
+void LidarSimulator::applyBias(double& x, double& y, double& theta) const {
+    if (bias_active_) {
+        x += bias_x_;
+        y += bias_y_;
+        theta += bias_theta_;
+    }
 }
