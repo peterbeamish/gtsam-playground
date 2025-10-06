@@ -1,0 +1,4 @@
+module(
+    name = "gtsam_playground",
+    version = "1.0.0",
+)
