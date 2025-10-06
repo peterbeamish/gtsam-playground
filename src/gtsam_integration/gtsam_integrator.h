@@ -32,7 +32,7 @@ struct GTSAMEstimate {
 
 class GTSAMIntegrator {
 public:
-    GTSAMIntegrator();
+    GTSAMIntegrator(size_t max_window_size = 100);
     
     void addOdometryMeasurement(const OdometryData& odom_data);
     void addLidarMeasurement(const LidarData& lidar_data);
@@ -51,6 +51,9 @@ private:
     std::unique_ptr<gtsam::LevenbergMarquardtOptimizer> optimizer_;
     
     size_t pose_count_;
+    size_t max_window_size_;
+    size_t window_start_index_;  // Starting index of current window
+    size_t global_pose_counter_;  // Global counter that never resets
     gtsam::noiseModel::Diagonal::shared_ptr odometry_noise_;
     gtsam::noiseModel::Diagonal::shared_ptr lidar_noise_;
     gtsam::noiseModel::Diagonal::shared_ptr prior_noise_;
@@ -61,4 +64,5 @@ private:
     
     void optimizeGraph();
     void updateInitialEstimate();
+    void trimOldPoses();
 };

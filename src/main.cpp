@@ -21,7 +21,7 @@ public:
         lidar_ = std::make_unique<LidarSimulator>(10.0, 0.01, 50.0, 20.0);
         odometry_processor_ = std::make_unique<OdometryProcessor>();
         robot_controller_ = std::make_unique<RobotController>();
-        gtsam_integrator_ = std::make_unique<GTSAMIntegrator>();
+        gtsam_integrator_ = std::make_unique<GTSAMIntegrator>(50); // 50 pose sliding window
         performance_monitor_ = std::make_unique<PerformanceMonitor>(100);
         web_ui_ = std::make_unique<SimpleWebUI>();
         

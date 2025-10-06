@@ -5,7 +5,8 @@
 #include <iostream>
 #include <iomanip>
 
-GTSAMIntegrator::GTSAMIntegrator() : pose_count_(0) {
+GTSAMIntegrator::GTSAMIntegrator(size_t max_window_size) 
+    : pose_count_(0), max_window_size_(max_window_size), window_start_index_(0), global_pose_counter_(0) {
     // Initialize noise models using proper GTSAM patterns
     // Prior noise on the first pose (x, y, theta) - sigmas = [0.3m, 0.3m, 0.1rad]
     prior_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
@@ -30,12 +31,13 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
     if (pose_count_ == 0) {
         // Add prior factor for the first pose using proper GTSAM patterns
         gtsam::Pose2 prior_pose(odom_data.x, odom_data.y, odom_data.theta);
-        gtsam::Key pose_key = getPoseKey(0);
+        gtsam::Key pose_key = getPoseKey(global_pose_counter_);
         
         graph_.add(gtsam::PriorFactor<gtsam::Pose2>(pose_key, prior_pose, prior_noise_));
         initial_estimate_.insert(pose_key, prior_pose);
         timestamp_to_key_[current_time] = pose_key;
         pose_count_++;
+        global_pose_counter_++;
         
         std::cout << "Added initial pose: " << prior_pose << std::endl;
         return;
@@ -43,8 +45,14 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
     
     // Add between factor for odometry using proper GTSAM patterns
     gtsam::Pose2 current_pose(odom_data.x, odom_data.y, odom_data.theta);
-    gtsam::Key prev_key = getPoseKey(pose_count_ - 1);
-    gtsam::Key current_key = getPoseKey(pose_count_);
+    gtsam::Key prev_key = getPoseKey(window_start_index_ + pose_count_ - 1);
+    gtsam::Key current_key = getPoseKey(global_pose_counter_);
+    
+    // Check if this key already exists (shouldn't happen, but safety check)
+    if (initial_estimate_.exists(current_key) || current_estimate_.exists(current_key)) {
+        std::cout << "Warning: Key " << current_key << " already exists, skipping odometry measurement" << std::endl;
+        return;
+    }
     
     // Get previous pose from current estimate or initial estimate
     gtsam::Pose2 prev_pose;
@@ -64,9 +72,13 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
     initial_estimate_.insert(current_key, current_pose);
     timestamp_to_key_[current_time] = current_key;
     pose_count_++;
+    global_pose_counter_++;
     
     std::cout << "Added odometry factor between poses " << (pose_count_ - 1) 
               << " and " << pose_count_ << ": " << odometry_delta << std::endl;
+    
+    // Trim old poses if window is too large
+    trimOldPoses();
     
     optimizeGraph();
 }
@@ -87,7 +99,7 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     }
     
     // Find the closest pose in time (simplified - use the latest pose)
-    gtsam::Key closest_pose_key = getPoseKey(pose_count_ - 1);
+    gtsam::Key closest_pose_key = getPoseKey(global_pose_counter_ > 0 ? global_pose_counter_ - 1 : 0);
     gtsam::Pose2 lidar_pose(lidar_data.x, lidar_data.y, lidar_data.theta);
     
     // Add measurement factor for lidar (soft constraint, not overriding the pose)
@@ -116,7 +128,7 @@ GTSAMEstimate GTSAMIntegrator::getCurrentEstimate() {
         return estimate;
     }
     
-    gtsam::Key latest_key = getPoseKey(pose_count_ - 1);
+    gtsam::Key latest_key = getPoseKey(global_pose_counter_ > 0 ? global_pose_counter_ - 1 : 0);
     gtsam::Pose2 latest_pose;
     
     // Get pose from current estimate or initial estimate
@@ -192,6 +204,89 @@ void GTSAMIntegrator::printGraph() const {
         }
     }
     std::cout << "========================\n" << std::endl;
+}
+
+void GTSAMIntegrator::trimOldPoses() {
+    if (pose_count_ <= max_window_size_) {
+        return; // No trimming needed
+    }
+    
+    // Calculate how many poses to remove
+    size_t poses_to_remove = pose_count_ - max_window_size_;
+    size_t new_window_start = window_start_index_ + poses_to_remove;
+    
+    std::cout << "Trimming " << poses_to_remove << " old poses (window: " 
+              << window_start_index_ << " -> " << new_window_start << ")" << std::endl;
+    
+    // Remove old factors from the graph
+    // We need to remove factors that reference the old poses
+    gtsam::NonlinearFactorGraph new_graph;
+    
+    for (size_t i = 0; i < graph_.size(); ++i) {
+        auto factor = graph_[i];
+        bool keep_factor = true;
+        
+        // Check if this factor references any of the poses we're removing
+        for (size_t j = window_start_index_; j < new_window_start; ++j) {
+            gtsam::Key old_key = getPoseKey(j);
+            auto keys = factor->keys();
+            if (std::find(keys.begin(), keys.end(), old_key) != keys.end()) {
+                keep_factor = false;
+                break;
+            }
+        }
+        
+        if (keep_factor) {
+            new_graph.add(factor);
+        }
+    }
+    
+    // Update the graph
+    graph_ = new_graph;
+    
+    // Remove old poses from initial and current estimates
+    for (size_t j = window_start_index_; j < new_window_start; ++j) {
+        gtsam::Key old_key = getPoseKey(j);
+        if (initial_estimate_.exists(old_key)) {
+            initial_estimate_.erase(old_key);
+        }
+        if (current_estimate_.exists(old_key)) {
+            current_estimate_.erase(old_key);
+        }
+    }
+    
+    // Update indices
+    window_start_index_ = new_window_start;
+    pose_count_ = max_window_size_;
+    
+    // Clear the timestamp_to_key_ map for old poses
+    auto it = timestamp_to_key_.begin();
+    while (it != timestamp_to_key_.end()) {
+        // Check if this key corresponds to an old pose
+        bool is_old_pose = false;
+        for (size_t j = window_start_index_ - poses_to_remove; j < window_start_index_; ++j) {
+            if (it->second == getPoseKey(j)) {
+                is_old_pose = true;
+                break;
+            }
+        }
+        if (is_old_pose) {
+            it = timestamp_to_key_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    
+    // Add a new prior factor for the first pose in the window
+    if (pose_count_ > 0) {
+        gtsam::Key first_key = getPoseKey(window_start_index_);
+        if (current_estimate_.exists(first_key)) {
+            gtsam::Pose2 first_pose = current_estimate_.at<gtsam::Pose2>(first_key);
+            graph_.add(gtsam::PriorFactor<gtsam::Pose2>(first_key, first_pose, prior_noise_));
+        }
+    }
+    
+    std::cout << "Trimmed to " << pose_count_ << " poses in window" << std::endl;
 }
 
 double GTSAMIntegrator::getGraphError() const {
