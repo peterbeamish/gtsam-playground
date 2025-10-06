@@ -20,18 +20,14 @@ RobotState RobotController::updateState() {
     
     if (dt <= 0) dt = 0.001; // Minimum time delta
     
-    // Check if we should auto-stop due to timeout
-    if (shouldAutoStop()) {
-        current_command_ = ControlCommand::STOP;
-    }
-    
     updateVelocities();
     integrateMotion(dt);
     
     RobotState state;
-    state.x = x_;
-    state.y = y_;
-    state.theta = theta_;
+    // Position is estimated by GTSAM, not the controller
+    state.x = 0.0;  // Will be overridden by GTSAM estimate
+    state.y = 0.0;  // Will be overridden by GTSAM estimate  
+    state.theta = 0.0;  // Will be overridden by GTSAM estimate
     state.linear_velocity = current_linear_velocity_;
     state.angular_velocity = current_angular_velocity_;
     state.timestamp = now;
@@ -42,6 +38,15 @@ RobotState RobotController::updateState() {
 
 void RobotController::updateVelocities() {
     ControlCommand command = current_command_.load();
+    
+    // Check if we should auto-stop due to timeout (for safety)
+    if (shouldAutoStop()) {
+        current_command_ = ControlCommand::STOP;
+        command = ControlCommand::STOP;
+    }
+    
+    // Robot only moves while command is actively held
+    // When command is released, it immediately stops
     switch (command) {
         case ControlCommand::FORWARD:
             current_linear_velocity_ = max_linear_velocity_;
@@ -61,6 +66,7 @@ void RobotController::updateVelocities() {
             break;
         case ControlCommand::STOP:
         default:
+            // Immediate stop when no command or STOP command
             current_linear_velocity_ = 0.0;
             current_angular_velocity_ = 0.0;
             break;
@@ -68,18 +74,9 @@ void RobotController::updateVelocities() {
 }
 
 void RobotController::integrateMotion(double dt) {
-    // Simple kinematic integration
-    double delta_x = current_linear_velocity_ * std::cos(theta_) * dt;
-    double delta_y = current_linear_velocity_ * std::sin(theta_) * dt;
-    double delta_theta = current_angular_velocity_ * dt;
-    
-    x_ += delta_x;
-    y_ += delta_y;
-    theta_ += delta_theta;
-    
-    // Normalize angle
-    while (theta_ > M_PI) theta_ -= 2.0 * M_PI;
-    while (theta_ < -M_PI) theta_ += 2.0 * M_PI;
+    // Don't integrate position here - let GTSAM handle the position estimation
+    // This controller only provides velocity commands
+    // The actual position will be estimated by GTSAM based on sensor data
 }
 
 void RobotController::reset() {
