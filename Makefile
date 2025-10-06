@@ -102,12 +102,18 @@ web:
 web-build:
 	@echo "Building web simulation with named container..."
 	@if ! docker ps -q -f name=$(WEB_CONTAINER_NAME) | grep -q .; then \
-		echo "Web container not running. Starting new container..."; \
-		docker run -d --name $(WEB_CONTAINER_NAME) \
-			-v $(WORKSPACE_DIR):/workspace \
-			-w /workspace \
-			$(IMAGE_NAME) \
-			sleep infinity; \
+		if docker ps -aq -f name=$(WEB_CONTAINER_NAME) | grep -q .; then \
+			echo "Web container exists but not running. Starting existing container..."; \
+			docker start $(WEB_CONTAINER_NAME); \
+		else \
+			echo "Web container not found. Creating new container..."; \
+			docker run -d --name $(WEB_CONTAINER_NAME) \
+				-p 8080:8080 \
+				-v $(WORKSPACE_DIR):/workspace \
+				-w /workspace \
+				$(IMAGE_NAME) \
+				sleep infinity; \
+		fi \
 	else \
 		echo "Web container already running. Using existing container..."; \
 	fi
@@ -123,7 +129,8 @@ web-run:
 		echo "Web container not running. Run 'make web-build' first."; \
 		exit 1; \
 	fi
-	docker exec -p 8080:8080 $(WEB_CONTAINER_NAME) bazel run //src:robot_simulation --enable_workspace
+	@echo "Starting simulation... Open http://localhost:8080 in your browser"
+	docker exec $(WEB_CONTAINER_NAME) bazel run //src:robot_simulation --enable_workspace
 
 # Stop the web container
 .PHONY: web-stop
