@@ -32,7 +32,7 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
         gtsam::Pose2 prior_pose(odom_data.x, odom_data.y, odom_data.theta);
         gtsam::Key pose_key = getPoseKey(0);
         
-        graph_.add(gtsam::PriorFactorPose2(pose_key, prior_pose, prior_noise_));
+        graph_.add(gtsam::PriorFactor<gtsam::Pose2>(pose_key, prior_pose, prior_noise_));
         initial_estimate_.insert(pose_key, prior_pose);
         timestamp_to_key_[current_time] = pose_key;
         pose_count_++;
@@ -57,7 +57,7 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
     gtsam::Pose2 new_pose = prev_pose.compose(odometry_delta);
     
     // Add between factor
-    graph_.add(gtsam::BetweenFactorPose2(prev_key, current_key, odometry_delta, odometry_noise_));
+    graph_.add(gtsam::BetweenFactor<gtsam::Pose2>(prev_key, current_key, odometry_delta, odometry_noise_));
     
     // Update initial estimate
     initial_estimate_.insert(current_key, new_pose);
@@ -92,7 +92,7 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     // Add unary factor for lidar measurement (acts as a soft constraint)
     // This is a simplified approach - in practice you might want to use
     // bearing-range factors or other more sophisticated measurement models
-    graph_.add(gtsam::PriorFactorPose2(closest_pose_key, lidar_pose, lidar_noise_));
+    graph_.add(gtsam::PriorFactor<gtsam::Pose2>(closest_pose_key, lidar_pose, lidar_noise_));
     
     std::cout << "Added LiDAR measurement for pose " << (pose_count_ - 1) 
               << ": " << lidar_pose << std::endl;
@@ -187,7 +187,7 @@ void GTSAMIntegrator::printGraph() const {
     if (graph_.size() > 0) {
         std::cout << "\nGraph structure:" << std::endl;
         for (size_t i = 0; i < graph_.size(); ++i) {
-            std::cout << "Factor " << i << ": " << graph_[i]->toString() << std::endl;
+            std::cout << "Factor " << i << ": " << "NonlinearFactor" << std::endl;
         }
     }
     std::cout << "========================\n" << std::endl;
