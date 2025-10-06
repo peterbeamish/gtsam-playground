@@ -41,47 +41,51 @@ A C++ project that simulates a robot with wheel encoders, LiDAR, and sensor fusi
 
 ## Quick Start
 
-### 🐳 Docker Setup (Recommended)
-
-The Docker environment includes all dependencies (GTSAM, Eigen, Boost) pre-installed:
+### 🚀 **Get Running in 2 Commands**
 
 ```bash
-# Build the Docker image (includes GTSAM installation)
+# 1. Build the Docker image (one-time setup)
 make build
 
-# Test the build
-make test
-
-# Run the full GTSAM simulation
-make simulate
-
-# Run the web interface (maps port 8080)
+# 2. Run the web interface
 make web
 ```
 
-**Available Make Commands:**
-- `make build` - Build Docker image with all dependencies
-- `make test` - Build and test the project
-- `make simulate` - Run full GTSAM simulation
-- `make web` - Run web interface (maps port 8080)
-- `make run` - Enter container interactively
-- `make clean` - Remove container and image
+Then open your browser to: **http://localhost:8080**
 
-### 🌐 Web Interface
+### 🎮 **Running Commands**
 
-The web interface provides real-time visualization and control:
+| Command | Description | Use Case |
+|---------|-------------|----------|
+| `make web` | **Run web interface** (recommended) | Start the full simulation with web UI |
+| `make web-build` | Build and cache for faster runs | First run or after code changes |
+| `make web-run` | Run from cached build | Subsequent runs (faster) |
+| `make web-stop` | Stop the web container | Clean shutdown |
+| `make simulate` | Run console simulation | Command-line only (no web UI) |
+| `make run` | Enter container shell | Development/debugging |
+| `make clean` | Remove all containers/images | Clean up everything |
+
+### 🔧 **Development Workflow**
 
 ```bash
-# Using Docker (recommended)
-make web
+# First time setup
+make build
 
-# Or manually with Docker
-docker run --rm -p 8080:8080 -v $(pwd):/workspace -w /workspace gtsam-playground bazel run //src:robot_simulation
+# Development cycle
+make web-build    # Build and cache
+make web-run      # Run simulation
+# ... make changes to code ...
+make web-build    # Rebuild with changes
+make web-run      # Run updated simulation
+
+# Clean up when done
+make web-stop
 ```
 
-Then open your browser and go to: **http://localhost:8080**
+### 🌐 **Web Interface Features**
 
-**Features:**
+Once running, the web interface provides:
+
 - **Real-time Control Panel**: Sliders for max speed, acceleration, and LiDAR lag settings
 - **Live Sensor Data**: Real-time display of wheel encoders, LiDAR, odometry, and GTSAM estimates
 - **Interactive Robot Visualization**: Top-down view with multiple sensor overlays
@@ -186,19 +190,42 @@ The system consists of several interconnected components:
 
 ## Troubleshooting
 
-### Build Issues
+### 🚨 **Common Running Issues**
 
-1. **Docker not found**: Install Docker Desktop
-2. **Build fails**: Try `make clean` then `make build`
-3. **Port 8080 in use**: Stop other services using port 8080
-4. **Permission issues**: Ensure Docker has proper permissions
+| Problem | Solution |
+|---------|----------|
+| **Port 8080 in use** | `make web-stop` then `make web` |
+| **Web UI not loading** | Check `http://localhost:8080` (not 8081) |
+| **Container won't start** | `make clean` then `make build` |
+| **Changes not showing** | Run `make web-build` after code changes |
+| **High CPU usage** | Use `make web-stop` when not needed |
+| **Permission denied** | Ensure Docker has proper permissions |
 
-### Runtime Issues
+### 🔧 **Quick Fixes**
 
-1. **Terminal input not working**: Ensure you're running in a proper terminal
-2. **Web UI not accessible**: Check if port 8080 is available
-3. **High CPU usage**: Adjust simulation update rates in the code
-4. **Container won't start**: Check Docker logs with `make logs`
+```bash
+# Reset everything
+make clean
+make build
+make web
+
+# Restart web interface
+make web-stop
+make web
+
+# Check what's running
+make ps
+
+# View logs
+make logs
+```
+
+### 🐛 **Development Issues**
+
+- **Code changes not reflected**: Run `make web-build` to rebuild
+- **Container stuck**: `make web-stop` then `make web`
+- **Build errors**: Check Docker is running and has enough memory
+- **Port conflicts**: Stop other services using port 8080
 
 ## Development
 
