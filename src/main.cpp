@@ -17,15 +17,16 @@ public:
     WebRobotSimulation() : running_(false), lidar_enabled_(true) {
         // Initialize components
         wheel_encoder_ = std::make_unique<WheelEncoderSimulator>();
-        // LiDAR with configurable noise and lag: 10Hz, 0.1m noise, 50ms mean lag with 20ms std
-        lidar_ = std::make_unique<LidarSimulator>(10.0, 0.1, 50.0, 20.0);
+        // LiDAR with configurable noise and lag: 10Hz, 0.01m noise, 50ms mean lag with 20ms std
+        lidar_ = std::make_unique<LidarSimulator>(10.0, 0.01, 50.0, 20.0);
         odometry_processor_ = std::make_unique<OdometryProcessor>();
         robot_controller_ = std::make_unique<RobotController>();
         gtsam_integrator_ = std::make_unique<GTSAMIntegrator>();
-        gtsam_odom_only_ = std::make_unique<GTSAMIntegrator>();
-        gtsam_lidar_only_ = std::make_unique<GTSAMIntegrator>();
         performance_monitor_ = std::make_unique<PerformanceMonitor>(100);
         web_ui_ = std::make_unique<SimpleWebUI>();
+        
+        // Initialize robot in STOP state
+        robot_controller_->setControlCommand(ControlCommand::STOP);
         
         // Connect robot controller to web UI via callback
         web_ui_->setControlCallback([this](const std::string& command) {
@@ -86,10 +87,12 @@ private:
     std::unique_ptr<OdometryProcessor> odometry_processor_;
     std::unique_ptr<RobotController> robot_controller_;
     std::unique_ptr<GTSAMIntegrator> gtsam_integrator_;
-    std::unique_ptr<GTSAMIntegrator> gtsam_odom_only_;
-    std::unique_ptr<GTSAMIntegrator> gtsam_lidar_only_;
     std::unique_ptr<PerformanceMonitor> performance_monitor_;
     std::unique_ptr<SimpleWebUI> web_ui_;
+    
+    // Independent sensor data storage
+    OdometryData current_odometry_;
+    LidarData current_lidar_;
     
     void simulationLoop() {
         auto last_update = std::chrono::steady_clock::now();
@@ -111,16 +114,17 @@ private:
         Timer total_timer;
         total_timer.start();
         
-        // Update robot state
+        // Update robot state (only velocities, position comes from GTSAM)
         RobotState robot_state = robot_controller_->updateState();
         
-        // Update sensors
-        wheel_encoder_->updateRobotState(robot_state.linear_velocity, robot_state.angular_velocity);
-        lidar_->updateRobotPose(robot_state.x, robot_state.y, robot_state.theta);
+        // Get current GTSAM estimate for position
+        GTSAMEstimate current_gtsam = gtsam_integrator_->getCurrentEstimate();
         
-        // Get sensor data
+        // Update wheel encoders with robot velocities
+        wheel_encoder_->updateRobotState(robot_state.linear_velocity, robot_state.angular_velocity);
+        
+        // Get encoder data
         WheelEncoderData encoder_data = wheel_encoder_->getEncoderData();
-        LidarData lidar_data = lidar_->getLidarData();
         
         // Process odometry
         Timer odom_timer;
@@ -129,59 +133,65 @@ private:
         odom_timer.stop();
         performance_monitor_->recordOdometryTime(odom_timer.getElapsedMilliseconds());
         
-        // Add odometry to GTSAM
-        gtsam_integrator_->addOdometryMeasurement(odom_data);
+        // Update LiDAR with odometry data (LiDAR simulates absolute position from odometry)
+        lidar_->updateOdometry(odom_data);
         
-        // Add LiDAR to GTSAM (sensor handles enable/disable internally)
+        // Get LiDAR data (at lower rate with noise)
+        LidarData lidar_data = lidar_->getLidarData();
+        
+        // Store independent sensor data
+        current_odometry_ = odom_data;
+        current_lidar_ = lidar_data;
+        
+        // Add measurements to GTSAM for fusion
+        gtsam_integrator_->addOdometryMeasurement(odom_data);
         gtsam_integrator_->addLidarMeasurement(lidar_data);
         
-        // Add odometry to odometry-only GTSAM
-        gtsam_odom_only_->addOdometryMeasurement(odom_data);
-        
-        // Add LiDAR to LiDAR-only GTSAM (sensor handles enable/disable internally)
-        gtsam_lidar_only_->addLidarMeasurement(lidar_data);
-        
-        // Get GTSAM estimates with timing
+        // Get GTSAM fusion estimate with timing
         Timer gtsam_timer;
         gtsam_timer.start();
         GTSAMEstimate gtsam_estimate = gtsam_integrator_->getCurrentEstimate();
-        GTSAMEstimate odom_only_estimate = gtsam_odom_only_->getCurrentEstimate();
-        GTSAMEstimate lidar_only_estimate = gtsam_lidar_only_->getCurrentEstimate();
         gtsam_timer.stop();
         performance_monitor_->recordGTSAMTime(gtsam_timer.getElapsedMilliseconds());
         
-        // Update web UI
+        // Update web UI with independent sensor data
         SensorData sensor_data;
         sensor_data.left_wheel_velocity = encoder_data.left_wheel_velocity;
         sensor_data.right_wheel_velocity = encoder_data.right_wheel_velocity;
-        sensor_data.lidar_x = lidar_data.x;
-        sensor_data.lidar_y = lidar_data.y;
-        sensor_data.lidar_theta = lidar_data.theta;
-        sensor_data.odom_x = odom_data.x;
-        sensor_data.odom_y = odom_data.y;
-        sensor_data.odom_theta = odom_data.theta;
+        
+        // Independent LiDAR data
+        sensor_data.lidar_x = current_lidar_.x;
+        sensor_data.lidar_y = current_lidar_.y;
+        sensor_data.lidar_theta = current_lidar_.theta;
+        sensor_data.lidar_enabled = lidar_->isEnabled();
+        
+        // Independent odometry data
+        sensor_data.odom_x = current_odometry_.x;
+        sensor_data.odom_y = current_odometry_.y;
+        sensor_data.odom_theta = current_odometry_.theta;
+        
+        // GTSAM fusion estimate
         sensor_data.gtsam_x = gtsam_estimate.x;
         sensor_data.gtsam_y = gtsam_estimate.y;
         sensor_data.gtsam_theta = gtsam_estimate.theta;
         sensor_data.gtsam_cov_xx = gtsam_estimate.covariance_xx;
         sensor_data.gtsam_cov_yy = gtsam_estimate.covariance_yy;
         sensor_data.gtsam_cov_tt = gtsam_estimate.covariance_tt;
-        sensor_data.lidar_enabled = lidar_->isEnabled();
         
-        // Ghost robot data
-        sensor_data.odom_only_x = odom_only_estimate.x;
-        sensor_data.odom_only_y = odom_only_estimate.y;
-        sensor_data.odom_only_theta = odom_only_estimate.theta;
-        sensor_data.odom_only_cov_xx = odom_only_estimate.covariance_xx;
-        sensor_data.odom_only_cov_yy = odom_only_estimate.covariance_yy;
-        sensor_data.odom_only_cov_tt = odom_only_estimate.covariance_tt;
+        // Set independent sensor data as "only" estimates (no separate GTSAM processing)
+        sensor_data.odom_only_x = current_odometry_.x;
+        sensor_data.odom_only_y = current_odometry_.y;
+        sensor_data.odom_only_theta = current_odometry_.theta;
+        sensor_data.odom_only_cov_xx = 0.0;  // No covariance for independent data
+        sensor_data.odom_only_cov_yy = 0.0;
+        sensor_data.odom_only_cov_tt = 0.0;
         
-        sensor_data.lidar_only_x = lidar_only_estimate.x;
-        sensor_data.lidar_only_y = lidar_only_estimate.y;
-        sensor_data.lidar_only_theta = lidar_only_estimate.theta;
-        sensor_data.lidar_only_cov_xx = lidar_only_estimate.covariance_xx;
-        sensor_data.lidar_only_cov_yy = lidar_only_estimate.covariance_yy;
-        sensor_data.lidar_only_cov_tt = lidar_only_estimate.covariance_tt;
+        sensor_data.lidar_only_x = current_lidar_.x;
+        sensor_data.lidar_only_y = current_lidar_.y;
+        sensor_data.lidar_only_theta = current_lidar_.theta;
+        sensor_data.lidar_only_cov_xx = 0.0;  // No covariance for independent data
+        sensor_data.lidar_only_cov_yy = 0.0;
+        sensor_data.lidar_only_cov_tt = 0.0;
         
         // Add performance data
         sensor_data.gtsam_times = performance_monitor_->getGTSAMTimes();
@@ -204,10 +214,13 @@ private:
 std::unique_ptr<WebRobotSimulation> g_simulation;
 
 void signalHandler(int signal) {
-    std::cout << "\nShutting down..." << std::endl;
+    std::cout << "\nReceived signal " << signal << ". Shutting down..." << std::endl;
     if (g_simulation) {
+        std::cout << "Stopping simulation..." << std::endl;
         g_simulation->stop();
+        std::cout << "Simulation stopped." << std::endl;
     }
+    std::cout << "Exiting..." << std::endl;
     exit(0);
 }
 
