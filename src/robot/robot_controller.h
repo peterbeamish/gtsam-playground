@@ -22,17 +22,23 @@ enum ControlCommand {
 
 class RobotController {
 public:
-    RobotController(double max_linear_velocity = 1.0, double max_angular_velocity = 1.0);
+    RobotController(double max_linear_velocity = 1.0, double max_angular_velocity = 1.0, 
+                   double acceleration = 0.5);
     
     void setControlCommand(ControlCommand command);
+    void setMaxSpeed(double max_linear_velocity, double max_angular_velocity);
+    void setAcceleration(double acceleration);
     RobotState updateState();
     void reset();
     
 private:
     double max_linear_velocity_;
     double max_angular_velocity_;
+    double acceleration_;
     double current_linear_velocity_;
     double current_angular_velocity_;
+    double target_linear_velocity_;
+    double target_angular_velocity_;
     
     std::atomic<ControlCommand> current_command_;
     std::chrono::steady_clock::time_point last_update_;

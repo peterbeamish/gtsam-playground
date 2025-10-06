@@ -1,9 +1,10 @@
 #include "robot_controller.h"
 #include <cmath>
 
-RobotController::RobotController(double max_linear_velocity, double max_angular_velocity)
+RobotController::RobotController(double max_linear_velocity, double max_angular_velocity, double acceleration)
     : max_linear_velocity_(max_linear_velocity), max_angular_velocity_(max_angular_velocity),
-      current_linear_velocity_(0.0), current_angular_velocity_(0.0),
+      acceleration_(acceleration), current_linear_velocity_(0.0), current_angular_velocity_(0.0),
+      target_linear_velocity_(0.0), target_angular_velocity_(0.0),
       current_command_(ControlCommand::STOP), x_(0.0), y_(0.0), theta_(0.0) {
     last_update_ = std::chrono::steady_clock::now();
     last_command_time_ = std::chrono::steady_clock::now();
@@ -12,6 +13,15 @@ RobotController::RobotController(double max_linear_velocity, double max_angular_
 void RobotController::setControlCommand(ControlCommand command) {
     current_command_ = command;
     last_command_time_ = std::chrono::steady_clock::now();
+}
+
+void RobotController::setMaxSpeed(double max_linear_velocity, double max_angular_velocity) {
+    max_linear_velocity_ = max_linear_velocity;
+    max_angular_velocity_ = max_angular_velocity;
+}
+
+void RobotController::setAcceleration(double acceleration) {
+    acceleration_ = acceleration;
 }
 
 RobotState RobotController::updateState() {
@@ -45,31 +55,56 @@ void RobotController::updateVelocities() {
         command = ControlCommand::STOP;
     }
     
-    // Robot only moves while command is actively held
-    // When command is released, it immediately stops
+    // Set target velocities based on command
     switch (command) {
         case ControlCommand::FORWARD:
-            current_linear_velocity_ = max_linear_velocity_;
-            current_angular_velocity_ = 0.0;
+            target_linear_velocity_ = max_linear_velocity_;
+            target_angular_velocity_ = 0.0;
             break;
         case ControlCommand::BACKWARD:
-            current_linear_velocity_ = -max_linear_velocity_;
-            current_angular_velocity_ = 0.0;
+            target_linear_velocity_ = -max_linear_velocity_;
+            target_angular_velocity_ = 0.0;
             break;
         case ControlCommand::LEFT:
-            current_linear_velocity_ = 0.0;
-            current_angular_velocity_ = max_angular_velocity_;
+            target_linear_velocity_ = 0.0;
+            target_angular_velocity_ = max_angular_velocity_;
             break;
         case ControlCommand::RIGHT:
-            current_linear_velocity_ = 0.0;
-            current_angular_velocity_ = -max_angular_velocity_;
+            target_linear_velocity_ = 0.0;
+            target_angular_velocity_ = -max_angular_velocity_;
             break;
         case ControlCommand::STOP:
         default:
-            // Immediate stop when no command or STOP command
-            current_linear_velocity_ = 0.0;
-            current_angular_velocity_ = 0.0;
+            // Target stop when no command or STOP command
+            target_linear_velocity_ = 0.0;
+            target_angular_velocity_ = 0.0;
             break;
+    }
+    
+    // Apply acceleration/deceleration to reach target velocities
+    double dt = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - last_update_).count() / 1000.0;
+    
+    if (dt <= 0) dt = 0.001; // Minimum time delta
+    
+    // Linear velocity acceleration
+    double linear_diff = target_linear_velocity_ - current_linear_velocity_;
+    double linear_accel = acceleration_ * dt;
+    
+    if (std::abs(linear_diff) <= linear_accel) {
+        current_linear_velocity_ = target_linear_velocity_;
+    } else {
+        current_linear_velocity_ += (linear_diff > 0 ? linear_accel : -linear_accel);
+    }
+    
+    // Angular velocity acceleration
+    double angular_diff = target_angular_velocity_ - current_angular_velocity_;
+    double angular_accel = acceleration_ * dt;
+    
+    if (std::abs(angular_diff) <= angular_accel) {
+        current_angular_velocity_ = target_angular_velocity_;
+    } else {
+        current_angular_velocity_ += (angular_diff > 0 ? angular_accel : -angular_accel);
     }
 }
 
@@ -85,6 +120,8 @@ void RobotController::reset() {
     theta_ = 0.0;
     current_linear_velocity_ = 0.0;
     current_angular_velocity_ = 0.0;
+    target_linear_velocity_ = 0.0;
+    target_angular_velocity_ = 0.0;
     current_command_ = ControlCommand::STOP;
     last_update_ = std::chrono::steady_clock::now();
     last_command_time_ = std::chrono::steady_clock::now();
