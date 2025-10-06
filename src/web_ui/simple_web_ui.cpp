@@ -377,6 +377,11 @@ std::string SimpleWebUI::generateHTML() {
     html << "                ctx.stroke();\n";
     html << "            }\n";
     html << "            \n";
+    html << "            // Scale factor for visualization\n";
+    html << "            const scale = 50; // pixels per meter\n";
+    html << "            const centerX = canvas.width / 2;\n";
+    html << "            const centerY = canvas.height / 2;\n";
+    html << "            \n";
     html << "            // Draw low-confidence area (red shaded rectangle)\n";
     html << "            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';\n";
     html << "            ctx.fillRect(centerX + 3 * scale, centerY - 7 * scale, 4 * scale, 4 * scale);\n";
@@ -388,11 +393,6 @@ std::string SimpleWebUI::generateHTML() {
     html << "            ctx.fillStyle = 'red';\n";
     html << "            ctx.font = '12px Arial';\n";
     html << "            ctx.fillText('Low Confidence Area', centerX + 3 * scale, centerY - 7 * scale - 5);\n";
-    html << "            \n";
-    html << "            // Scale factor for visualization\n";
-    html << "            const scale = 50; // pixels per meter\n";
-    html << "            const centerX = canvas.width / 2;\n";
-    html << "            const centerY = canvas.height / 2;\n";
     html << "            \n";
     html << "                        // Draw GTSAM estimate position (blue circle)\n";
             html << "            ctx.fillStyle = 'blue';\n";
@@ -851,6 +851,7 @@ std::string SimpleWebUI::generateJSON() {
          "\"lidar_x\":" + std::to_string(current_data_.lidar_x) + ","
          "\"lidar_y\":" + std::to_string(current_data_.lidar_y) + ","
          "\"lidar_theta\":" + std::to_string(current_data_.lidar_theta) + ","
+         "\"lidar_confidence\":" + std::to_string(current_data_.lidar_confidence) + ","
          "\"odom_x\":" + std::to_string(current_data_.odom_x) + ","
          "\"odom_y\":" + std::to_string(current_data_.odom_y) + ","
          "\"odom_theta\":" + std::to_string(current_data_.odom_theta) + ","
