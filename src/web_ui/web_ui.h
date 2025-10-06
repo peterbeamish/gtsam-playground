@@ -23,6 +23,13 @@ struct SensorData {
     double gtsam_cov_tt;
 };
 
+struct ControlSettings {
+    double max_speed;
+    double acceleration;
+    double lidar_lag_threshold;
+    double lidar_lag_factor;
+};
+
 class WebUI {
 public:
     WebUI(int port = 8080);
@@ -31,6 +38,8 @@ public:
     void start();
     void stop();
     void updateSensorData(const SensorData& data);
+    void updateControlSettings(const ControlSettings& settings);
+    ControlSettings getControlSettings() const;
     
 private:
     crow::SimpleApp app_;
@@ -39,7 +48,9 @@ private:
     std::atomic<bool> running_;
     
     SensorData current_data_;
+    ControlSettings control_settings_;
     std::mutex data_mutex_;
+    std::mutex settings_mutex_;
     
     void setupRoutes();
     std::string generateHTML();

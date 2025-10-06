@@ -4,6 +4,11 @@
 #include <iomanip>
 
 WebUI::WebUI(int port) : port_(port), running_(false) {
+    // Initialize default control settings
+    control_settings_.max_speed = 1.0;
+    control_settings_.acceleration = 0.5;
+    control_settings_.lidar_lag_threshold = 1.25;
+    control_settings_.lidar_lag_factor = 1.0;
     setupRoutes();
 }
 
@@ -31,6 +36,16 @@ void WebUI::updateSensorData(const SensorData& data) {
     current_data_ = data;
 }
 
+void WebUI::updateControlSettings(const ControlSettings& settings) {
+    std::lock_guard<std::mutex> lock(settings_mutex_);
+    control_settings_ = settings;
+}
+
+ControlSettings WebUI::getControlSettings() const {
+    std::lock_guard<std::mutex> lock(settings_mutex_);
+    return control_settings_;
+}
+
 void WebUI::setupRoutes() {
     // Main page
     CROW_ROUTE(app_, "/")([this]() {
@@ -47,6 +62,46 @@ void WebUI::setupRoutes() {
     CROW_ROUTE(app_, "/api/control/<string>")([this](const std::string& command) {
         // This would be connected to the robot controller
         return crow::response("OK");
+    });
+    
+    // Control settings endpoints
+    CROW_ROUTE(app_, "/api/settings")([this]() {
+        std::lock_guard<std::mutex> lock(settings_mutex_);
+        std::ostringstream json;
+        json << "{"
+             << "\"max_speed\":" << control_settings_.max_speed << ","
+             << "\"acceleration\":" << control_settings_.acceleration << ","
+             << "\"lidar_lag_threshold\":" << control_settings_.lidar_lag_threshold << ","
+             << "\"lidar_lag_factor\":" << control_settings_.lidar_lag_factor
+             << "}";
+        return crow::response(json.str());
+    });
+    
+    CROW_ROUTE(app_, "/api/settings").methods("POST"_method)([this](const crow::request& req) {
+        try {
+            auto json_data = crow::json::load(req.body);
+            if (!json_data) {
+                return crow::response(400, "Invalid JSON");
+            }
+            
+            std::lock_guard<std::mutex> lock(settings_mutex_);
+            if (json_data.has("max_speed")) {
+                control_settings_.max_speed = json_data["max_speed"].d();
+            }
+            if (json_data.has("acceleration")) {
+                control_settings_.acceleration = json_data["acceleration"].d();
+            }
+            if (json_data.has("lidar_lag_threshold")) {
+                control_settings_.lidar_lag_threshold = json_data["lidar_lag_threshold"].d();
+            }
+            if (json_data.has("lidar_lag_factor")) {
+                control_settings_.lidar_lag_factor = json_data["lidar_lag_factor"].d();
+            }
+            
+            return crow::response("OK");
+        } catch (const std::exception& e) {
+            return crow::response(400, "Error processing settings: " + std::string(e.what()));
+        }
     });
 }
 
@@ -70,6 +125,11 @@ std::string WebUI::generateHTML() {
         .controls { text-align: center; margin: 20px 0; }
         .control-btn { margin: 5px; padding: 10px 20px; font-size: 16px; }
         .status { text-align: center; margin: 20px 0; }
+        .settings-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 20px 0; }
+        .slider-container { margin: 15px 0; }
+        .slider-label { display: inline-block; width: 200px; font-weight: bold; }
+        .slider { width: 300px; margin: 0 10px; }
+        .slider-value { display: inline-block; width: 80px; text-align: right; font-weight: bold; color: #333; }
     </style>
 </head>
 <body>
@@ -77,6 +137,30 @@ std::string WebUI::generateHTML() {
         <div class="header">
             <h1>Robot Sensor Fusion Dashboard</h1>
             <p>Real-time sensor data and GTSAM estimation</p>
+        </div>
+        
+        <div class="settings-panel">
+            <h3>Robot Control Settings</h3>
+            <div class="slider-container">
+                <span class="slider-label">Max Speed (m/s):</span>
+                <input type="range" class="slider" id="maxSpeedSlider" min="0.1" max="3.0" step="0.1" value="1.0">
+                <span class="slider-value" id="maxSpeedValue">1.0</span>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">Acceleration (m/s²):</span>
+                <input type="range" class="slider" id="accelerationSlider" min="0.1" max="2.0" step="0.1" value="0.5">
+                <span class="slider-value" id="accelerationValue">0.5</span>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">LiDAR Lag Threshold (m/s):</span>
+                <input type="range" class="slider" id="lidarLagThresholdSlider" min="0.5" max="2.0" step="0.1" value="1.25">
+                <span class="slider-value" id="lidarLagThresholdValue">1.25</span>
+            </div>
+            <div class="slider-container">
+                <span class="slider-label">LiDAR Lag Factor:</span>
+                <input type="range" class="slider" id="lidarLagFactorSlider" min="0.5" max="3.0" step="0.1" value="1.0">
+                <span class="slider-value" id="lidarLagFactorValue">1.0</span>
+            </div>
         </div>
         
         <div class="controls">
@@ -238,6 +322,66 @@ std::string WebUI::generateHTML() {
                 case ' ': sendCommand('stop'); break;
             }
         });
+        
+        // Load initial settings
+        loadSettings();
+        
+        // Setup slider event listeners
+        document.getElementById('maxSpeedSlider').addEventListener('input', function() {
+            document.getElementById('maxSpeedValue').textContent = this.value;
+            updateSettings();
+        });
+        
+        document.getElementById('accelerationSlider').addEventListener('input', function() {
+            document.getElementById('accelerationValue').textContent = this.value;
+            updateSettings();
+        });
+        
+        document.getElementById('lidarLagThresholdSlider').addEventListener('input', function() {
+            document.getElementById('lidarLagThresholdValue').textContent = this.value;
+            updateSettings();
+        });
+        
+        document.getElementById('lidarLagFactorSlider').addEventListener('input', function() {
+            document.getElementById('lidarLagFactorValue').textContent = this.value;
+            updateSettings();
+        });
+        
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('maxSpeedSlider').value = data.max_speed;
+                    document.getElementById('maxSpeedValue').textContent = data.max_speed;
+                    document.getElementById('accelerationSlider').value = data.acceleration;
+                    document.getElementById('accelerationValue').textContent = data.acceleration;
+                    document.getElementById('lidarLagThresholdSlider').value = data.lidar_lag_threshold;
+                    document.getElementById('lidarLagThresholdValue').textContent = data.lidar_lag_threshold;
+                    document.getElementById('lidarLagFactorSlider').value = data.lidar_lag_factor;
+                    document.getElementById('lidarLagFactorValue').textContent = data.lidar_lag_factor;
+                })
+                .catch(error => console.error('Error loading settings:', error));
+        }
+        
+        function updateSettings() {
+            const settings = {
+                max_speed: parseFloat(document.getElementById('maxSpeedSlider').value),
+                acceleration: parseFloat(document.getElementById('accelerationSlider').value),
+                lidar_lag_threshold: parseFloat(document.getElementById('lidarLagThresholdSlider').value),
+                lidar_lag_factor: parseFloat(document.getElementById('lidarLagFactorSlider').value)
+            };
+            
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings)
+            })
+            .then(response => response.text())
+            .then(data => console.log('Settings updated:', data))
+            .catch(error => console.error('Error updating settings:', error));
+        }
         
         // Update data every 100ms
         setInterval(updateSensorData, 100);
