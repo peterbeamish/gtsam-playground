@@ -42,7 +42,7 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
     }
     
     // Add between factor for odometry using proper GTSAM patterns
-    gtsam::Pose2 odometry_delta(odom_data.x, odom_data.y, odom_data.theta);
+    gtsam::Pose2 current_pose(odom_data.x, odom_data.y, odom_data.theta);
     gtsam::Key prev_key = getPoseKey(pose_count_ - 1);
     gtsam::Key current_key = getPoseKey(pose_count_);
     
@@ -54,13 +54,14 @@ void GTSAMIntegrator::addOdometryMeasurement(const OdometryData& odom_data) {
         prev_pose = initial_estimate_.at<gtsam::Pose2>(prev_key);
     }
     
-    gtsam::Pose2 new_pose = prev_pose.compose(odometry_delta);
+    // Calculate the relative transformation from previous to current pose
+    gtsam::Pose2 odometry_delta = prev_pose.between(current_pose);
     
     // Add between factor
     graph_.add(gtsam::BetweenFactor<gtsam::Pose2>(prev_key, current_key, odometry_delta, odometry_noise_));
     
     // Update initial estimate
-    initial_estimate_.insert(current_key, new_pose);
+    initial_estimate_.insert(current_key, current_pose);
     timestamp_to_key_[current_time] = current_key;
     pose_count_++;
     
@@ -75,11 +76,11 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     
     auto current_time = std::chrono::steady_clock::now();
     
-    // Check if this is fresh LiDAR data (within last 200ms)
+    // Check if this is fresh LiDAR data (within last 500ms for 10Hz sensor)
     auto time_since_lidar = std::chrono::duration_cast<std::chrono::milliseconds>(
         current_time - lidar_data.timestamp).count();
     
-    if (time_since_lidar > 200) {
+    if (time_since_lidar > 500) {
         // LiDAR data is stale (sensor likely disabled), don't add to graph
         std::cout << "LiDAR data is stale (" << time_since_lidar << "ms old), skipping measurement" << std::endl;
         return;
@@ -89,10 +90,10 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     gtsam::Key closest_pose_key = getPoseKey(pose_count_ - 1);
     gtsam::Pose2 lidar_pose(lidar_data.x, lidar_data.y, lidar_data.theta);
     
-    // Add unary factor for lidar measurement (acts as a soft constraint)
-    // This is a simplified approach - in practice you might want to use
-    // bearing-range factors or other more sophisticated measurement models
-    graph_.add(gtsam::PriorFactor<gtsam::Pose2>(closest_pose_key, lidar_pose, lidar_noise_));
+    // Add measurement factor for lidar (soft constraint, not overriding the pose)
+    // Use a very weak noise model to avoid over-constraining the optimization
+    auto weak_lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(gtsam::Vector3(0.5, 0.5, 0.1));
+    graph_.add(gtsam::PriorFactor<gtsam::Pose2>(closest_pose_key, lidar_pose, weak_lidar_noise));
     
     std::cout << "Added LiDAR measurement for pose " << (pose_count_ - 1) 
               << ": " << lidar_pose << std::endl;
