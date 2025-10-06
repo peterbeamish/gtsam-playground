@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <limits>
 
 struct SensorData {
     double left_wheel_velocity;
@@ -57,6 +58,13 @@ struct SensorData {
     double min_gtsam_time;
 };
 
+struct ControlSettings {
+    double max_speed;
+    double acceleration;
+    double lidar_lag_threshold;
+    double lidar_lag_factor;
+};
+
 class SimpleWebUI {
 public:
     SimpleWebUI(int port = 8080);
@@ -65,6 +73,8 @@ public:
     void start();
     void stop();
     void updateSensorData(const SensorData& data);
+    void updateControlSettings(const ControlSettings& settings);
+    ControlSettings getControlSettings();
     void setControlCallback(std::function<void(const std::string&)> callback);
     
 private:
@@ -74,13 +84,17 @@ private:
     std::atomic<bool> running_;
     
     SensorData current_data_;
+    ControlSettings control_settings_;
     std::mutex data_mutex_;
+    std::mutex settings_mutex_;
     std::function<void(const std::string&)> control_callback_;
     
     void serverLoop();
     std::string generateHTML();
     std::string generateJSON();
+    std::string generateSettingsJSON();
     std::string handleRequest(const std::string& request);
     void sendResponse(int client_socket, const std::string& response);
     void handleControlCommand(const std::string& command);
+    void handleSettingsUpdate(const std::string& json_data);
 };

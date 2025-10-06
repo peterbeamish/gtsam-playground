@@ -4,8 +4,14 @@
 #include <iomanip>
 #include <memory>
 #include <functional>
+#include <limits>
 
 SimpleWebUI::SimpleWebUI(int port) : port_(port), server_socket_(-1), running_(false) {
+    // Initialize default control settings
+    control_settings_.max_speed = 1.0;
+    control_settings_.acceleration = 0.5;
+    control_settings_.lidar_lag_threshold = 1.25;
+    control_settings_.lidar_lag_factor = 1.0;
 }
 
 SimpleWebUI::~SimpleWebUI() {
@@ -68,6 +74,16 @@ void SimpleWebUI::updateSensorData(const SensorData& data) {
     current_data_ = data;
 }
 
+void SimpleWebUI::updateControlSettings(const ControlSettings& settings) {
+    std::lock_guard<std::mutex> lock(settings_mutex_);
+    control_settings_ = settings;
+}
+
+ControlSettings SimpleWebUI::getControlSettings() {
+    std::lock_guard<std::mutex> lock(settings_mutex_);
+    return control_settings_;
+}
+
 void SimpleWebUI::setControlCallback(std::function<void(const std::string&)> callback) {
     control_callback_ = callback;
 }
@@ -102,6 +118,17 @@ void SimpleWebUI::serverLoop() {
 std::string SimpleWebUI::handleRequest(const std::string& request) {
     if (request.find("GET /api/sensor_data") != std::string::npos) {
         return generateJSON();
+    } else if (request.find("GET /api/settings") != std::string::npos) {
+        return generateSettingsJSON();
+    } else if (request.find("POST /api/settings") != std::string::npos) {
+        // Extract JSON data from POST body
+        size_t body_start = request.find("\r\n\r\n");
+        if (body_start != std::string::npos) {
+            body_start += 4;
+            std::string json_data = request.substr(body_start);
+            handleSettingsUpdate(json_data);
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nOK";
     } else if (request.find("GET /api/control/") != std::string::npos) {
         // Extract command from URL
         size_t start = request.find("/api/control/") + 13;
@@ -127,6 +154,75 @@ void SimpleWebUI::sendResponse(int client_socket, const std::string& response) {
 void SimpleWebUI::handleControlCommand(const std::string& command) {
     if (control_callback_) {
         control_callback_(command);
+    }
+}
+
+std::string SimpleWebUI::generateSettingsJSON() {
+    std::lock_guard<std::mutex> lock(settings_mutex_);
+    std::ostringstream json;
+    json << "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: ";
+    
+    std::string data = "{"
+         "\"max_speed\":" + std::to_string(control_settings_.max_speed) + ","
+         "\"acceleration\":" + std::to_string(control_settings_.acceleration) + ","
+         "\"lidar_lag_threshold\":" + std::to_string(control_settings_.lidar_lag_threshold) + ","
+         "\"lidar_lag_factor\":" + std::to_string(control_settings_.lidar_lag_factor) + "}";
+    
+    json << data.length() << "\r\n\r\n" << data;
+    return json.str();
+}
+
+void SimpleWebUI::handleSettingsUpdate(const std::string& json_data) {
+    // Simple JSON parsing for settings update
+    // This is a basic implementation - in production you'd want a proper JSON parser
+    std::lock_guard<std::mutex> lock(settings_mutex_);
+    
+    // Parse max_speed
+    size_t pos = json_data.find("\"max_speed\":");
+    if (pos != std::string::npos) {
+        pos += 12; // length of "\"max_speed\":"
+        size_t end = json_data.find(",", pos);
+        if (end == std::string::npos) end = json_data.find("}", pos);
+        if (end != std::string::npos) {
+            std::string value = json_data.substr(pos, end - pos);
+            control_settings_.max_speed = std::stod(value);
+        }
+    }
+    
+    // Parse acceleration
+    pos = json_data.find("\"acceleration\":");
+    if (pos != std::string::npos) {
+        pos += 15; // length of "\"acceleration\":"
+        size_t end = json_data.find(",", pos);
+        if (end == std::string::npos) end = json_data.find("}", pos);
+        if (end != std::string::npos) {
+            std::string value = json_data.substr(pos, end - pos);
+            control_settings_.acceleration = std::stod(value);
+        }
+    }
+    
+    // Parse lidar_lag_threshold
+    pos = json_data.find("\"lidar_lag_threshold\":");
+    if (pos != std::string::npos) {
+        pos += 22; // length of "\"lidar_lag_threshold\":"
+        size_t end = json_data.find(",", pos);
+        if (end == std::string::npos) end = json_data.find("}", pos);
+        if (end != std::string::npos) {
+            std::string value = json_data.substr(pos, end - pos);
+            control_settings_.lidar_lag_threshold = std::stod(value);
+        }
+    }
+    
+    // Parse lidar_lag_factor
+    pos = json_data.find("\"lidar_lag_factor\":");
+    if (pos != std::string::npos) {
+        pos += 19; // length of "\"lidar_lag_factor\":"
+        size_t end = json_data.find(",", pos);
+        if (end == std::string::npos) end = json_data.find("}", pos);
+        if (end != std::string::npos) {
+            std::string value = json_data.substr(pos, end - pos);
+            control_settings_.lidar_lag_factor = std::stod(value);
+        }
     }
 }
 
@@ -157,22 +253,51 @@ std::string SimpleWebUI::generateHTML() {
     html << "        .legend { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; }\n";
     html << "        .legend-item { display: flex; align-items: center; gap: 8px; }\n";
     html << "        .legend-color { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #ccc; }\n";
-    html << "        .performance-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 20px 0; }\n";
-    html << "        .performance-stats { display: flex; gap: 20px; margin-bottom: 15px; justify-content: center; }\n";
-    html << "        .stat-item { display: flex; flex-direction: column; align-items: center; }\n";
-    html << "        .stat-label { font-size: 12px; color: #666; }\n";
-    html << "        .stat-value { font-size: 18px; font-weight: bold; color: #333; }\n";
-    html << "        .performance-graph-container { text-align: center; }\n";
-    html << "        #performanceCanvas { border: 1px solid #ddd; background: #fafafa; }\n";
+        html << "        .performance-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 20px 0; }\n";
+        html << "        .performance-stats { display: flex; gap: 20px; margin-bottom: 15px; justify-content: center; }\n";
+        html << "        .stat-item { display: flex; flex-direction: column; align-items: center; }\n";
+        html << "        .stat-label { font-size: 12px; color: #666; }\n";
+        html << "        .stat-value { font-size: 18px; font-weight: bold; color: #333; }\n";
+        html << "        .performance-graph-container { text-align: center; }\n";
+        html << "        #performanceCanvas { border: 1px solid #ddd; background: #fafafa; }\n";
+        html << "        .settings-panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 20px 0; }\n";
+        html << "        .slider-container { margin: 15px 0; }\n";
+        html << "        .slider-label { display: inline-block; width: 200px; font-weight: bold; }\n";
+        html << "        .slider { width: 300px; margin: 0 10px; }\n";
+        html << "        .slider-value { display: inline-block; width: 80px; text-align: right; font-weight: bold; color: #333; }\n";
     html << "    </style>\n";
     html << "</head>\n";
     html << "<body>\n";
     html << "    <div class=\"container\">\n";
-    html << "        <div class=\"header\">\n";
-    html << "            <h1>Robot Sensor Fusion Dashboard</h1>\n";
-    html << "            <p>Real-time sensor data and odometry estimation</p>\n";
-    html << "        </div>\n";
-    html << "        \n";
+        html << "        <div class=\"header\">\n";
+        html << "            <h1>Robot Sensor Fusion Dashboard</h1>\n";
+        html << "            <p>Real-time sensor data and odometry estimation</p>\n";
+        html << "        </div>\n";
+        html << "        \n";
+        html << "        <div class=\"settings-panel\">\n";
+        html << "            <h3>Robot Control Settings</h3>\n";
+        html << "            <div class=\"slider-container\">\n";
+        html << "                <span class=\"slider-label\">Max Speed (m/s):</span>\n";
+        html << "                <input type=\"range\" class=\"slider\" id=\"maxSpeedSlider\" min=\"0.1\" max=\"3.0\" step=\"0.1\" value=\"1.0\">\n";
+        html << "                <span class=\"slider-value\" id=\"maxSpeedValue\">1.0</span>\n";
+        html << "            </div>\n";
+        html << "            <div class=\"slider-container\">\n";
+        html << "                <span class=\"slider-label\">Acceleration (m/s²):</span>\n";
+        html << "                <input type=\"range\" class=\"slider\" id=\"accelerationSlider\" min=\"0.1\" max=\"2.0\" step=\"0.1\" value=\"0.5\">\n";
+        html << "                <span class=\"slider-value\" id=\"accelerationValue\">0.5</span>\n";
+        html << "            </div>\n";
+        html << "            <div class=\"slider-container\">\n";
+        html << "                <span class=\"slider-label\">LiDAR Lag Threshold (m/s):</span>\n";
+        html << "                <input type=\"range\" class=\"slider\" id=\"lidarLagThresholdSlider\" min=\"0.5\" max=\"2.0\" step=\"0.1\" value=\"1.25\">\n";
+        html << "                <span class=\"slider-value\" id=\"lidarLagThresholdValue\">1.25</span>\n";
+        html << "            </div>\n";
+        html << "            <div class=\"slider-container\">\n";
+        html << "                <span class=\"slider-label\">LiDAR Lag Factor:</span>\n";
+        html << "                <input type=\"range\" class=\"slider\" id=\"lidarLagFactorSlider\" min=\"0.5\" max=\"3.0\" step=\"0.1\" value=\"1.0\">\n";
+        html << "                <span class=\"slider-value\" id=\"lidarLagFactorValue\">1.0</span>\n";
+        html << "            </div>\n";
+        html << "        </div>\n";
+        html << "        \n";
         html << "        <div class=\"controls\">\n";
         html << "            <button class=\"control-btn\" onclick=\"sendCommand('forward')\">W - Forward</button>\n";
         html << "            <button class=\"control-btn\" onclick=\"sendCommand('backward')\">S - Backward</button>\n";
@@ -814,6 +939,66 @@ std::string SimpleWebUI::generateHTML() {
         html << "            }\n";
         html << "        });\n";
     html << "        \n";
+        html << "        // Load initial settings\n";
+        html << "        loadSettings();\n";
+        html << "        \n";
+        html << "        // Setup slider event listeners\n";
+        html << "        document.getElementById('maxSpeedSlider').addEventListener('input', function() {\n";
+        html << "            document.getElementById('maxSpeedValue').textContent = this.value;\n";
+        html << "            updateSettings();\n";
+        html << "        });\n";
+        html << "        \n";
+        html << "        document.getElementById('accelerationSlider').addEventListener('input', function() {\n";
+        html << "            document.getElementById('accelerationValue').textContent = this.value;\n";
+        html << "            updateSettings();\n";
+        html << "        });\n";
+        html << "        \n";
+        html << "        document.getElementById('lidarLagThresholdSlider').addEventListener('input', function() {\n";
+        html << "            document.getElementById('lidarLagThresholdValue').textContent = this.value;\n";
+        html << "            updateSettings();\n";
+        html << "        });\n";
+        html << "        \n";
+        html << "        document.getElementById('lidarLagFactorSlider').addEventListener('input', function() {\n";
+        html << "            document.getElementById('lidarLagFactorValue').textContent = this.value;\n";
+        html << "            updateSettings();\n";
+        html << "        });\n";
+        html << "        \n";
+        html << "        function loadSettings() {\n";
+        html << "            fetch('/api/settings')\n";
+        html << "                .then(response => response.json())\n";
+        html << "                .then(data => {\n";
+        html << "                    document.getElementById('maxSpeedSlider').value = data.max_speed;\n";
+        html << "                    document.getElementById('maxSpeedValue').textContent = data.max_speed;\n";
+        html << "                    document.getElementById('accelerationSlider').value = data.acceleration;\n";
+        html << "                    document.getElementById('accelerationValue').textContent = data.acceleration;\n";
+        html << "                    document.getElementById('lidarLagThresholdSlider').value = data.lidar_lag_threshold;\n";
+        html << "                    document.getElementById('lidarLagThresholdValue').textContent = data.lidar_lag_threshold;\n";
+        html << "                    document.getElementById('lidarLagFactorSlider').value = data.lidar_lag_factor;\n";
+        html << "                    document.getElementById('lidarLagFactorValue').textContent = data.lidar_lag_factor;\n";
+        html << "                })\n";
+        html << "                .catch(error => console.error('Error loading settings:', error));\n";
+        html << "        }\n";
+        html << "        \n";
+        html << "        function updateSettings() {\n";
+        html << "            const settings = {\n";
+        html << "                max_speed: parseFloat(document.getElementById('maxSpeedSlider').value),\n";
+        html << "                acceleration: parseFloat(document.getElementById('accelerationSlider').value),\n";
+        html << "                lidar_lag_threshold: parseFloat(document.getElementById('lidarLagThresholdSlider').value),\n";
+        html << "                lidar_lag_factor: parseFloat(document.getElementById('lidarLagFactorSlider').value)\n";
+        html << "            };\n";
+        html << "            \n";
+        html << "            fetch('/api/settings', {\n";
+        html << "                method: 'POST',\n";
+        html << "                headers: {\n";
+        html << "                    'Content-Type': 'application/json',\n";
+        html << "                },\n";
+        html << "                body: JSON.stringify(settings)\n";
+        html << "            })\n";
+        html << "            .then(response => response.text())\n";
+        html << "            .then(data => console.log('Settings updated:', data))\n";
+        html << "            .catch(error => console.error('Error updating settings:', error));\n";
+        html << "        }\n";
+        html << "        \n";
         html << "        // Update data every 100ms\n";
         html << "        setInterval(updateSensorData, 100);\n";
         html << "        updateSensorData(); // Initial load\n";
