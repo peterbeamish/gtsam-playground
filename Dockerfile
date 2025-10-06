@@ -47,6 +47,8 @@ RUN mkdir -p /tmp/gtsam_build \
     && mkdir build \
     && cd build \
     && cmake .. \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DBUILD_SHARED_LIBS=OFF \
         -DGTSAM_BUILD_TESTS=OFF \
         -DGTSAM_BUILD_EXAMPLES=OFF \
         -DGTSAM_BUILD_DOC=OFF \
@@ -54,17 +56,15 @@ RUN mkdir -p /tmp/gtsam_build \
         -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF \
         -DGTSAM_USE_SYSTEM_EIGEN=ON \
     && make -j$(nproc) \
-    && make install \
-    && cd / \
-    && rm -rf /tmp/gtsam_build
+    && make install
 
 # Set up working directory
 WORKDIR /workspace
 
 # Create a non-root user for development
-RUN useradd -m -s /bin/bash developer && \
-    chown -R developer:developer /workspace
-USER developer
+#RUN useradd -m -s /bin/bash developer && \
+#    chown -R developer:developer /workspace
+#USER developer
 
 # Set up environment
 ENV PATH="/home/developer/bin:$PATH"

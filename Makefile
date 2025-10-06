@@ -3,6 +3,7 @@
 # Variables
 IMAGE_NAME = gtsam-playground
 CONTAINER_NAME = gtsam-dev
+WEB_CONTAINER_NAME = gtsam-web
 WORKSPACE_DIR = $(shell pwd)
 
 # Default target
@@ -10,14 +11,16 @@ WORKSPACE_DIR = $(shell pwd)
 help:
 	@echo "GTSAM Playground Docker Commands:"
 	@echo ""
-	@echo "  make build     - Build the Docker image"
-	@echo "  make run       - Run container interactively"
-	@echo "  make shell     - Enter running container shell"
-	@echo "  make stop      - Stop the container"
-	@echo "  make clean     - Remove container and image"
-	@echo "  make rebuild   - Clean and rebuild everything"
-	@echo "  make install   - Install GTSAM inside container"
-	@echo "  make test      - Build and test the project"
+	@echo "  make build       - Build the Docker image"
+	@echo "  make run         - Run container interactively"
+	@echo "  make shell       - Enter running container shell"
+	@echo "  make stop        - Stop the container"
+	@echo "  make clean       - Remove container and image"
+	@echo "  make rebuild     - Clean and rebuild everything"
+	@echo "  make web         - Run the web simulation (one-time)"
+	@echo "  make web-build   - Build the web simulation using named container"
+	@echo "  make web-run     - Run the web simulation using named container"
+	@echo "  make web-stop    - Stop the web container"
 	@echo ""
 
 # Build the Docker image
@@ -55,21 +58,13 @@ clean:
 	@echo "Cleaning up..."
 	-docker stop $(CONTAINER_NAME) 2>/dev/null || true
 	-docker rm $(CONTAINER_NAME) 2>/dev/null || true
+	-docker stop $(WEB_CONTAINER_NAME) 2>/dev/null || true
+	-docker rm $(WEB_CONTAINER_NAME) 2>/dev/null || true
 	-docker rmi $(IMAGE_NAME) 2>/dev/null || true
 
 # Rebuild everything
 .PHONY: rebuild
 rebuild: clean build
-
-# Install GTSAM inside container
-.PHONY: install
-install:
-	@echo "Installing GTSAM..."
-	docker run --rm \
-		-v $(WORKSPACE_DIR):/workspace \
-		-w /workspace \
-		$(IMAGE_NAME) \
-		./install-gtsam.sh
 
 # Build and test the project
 .PHONY: test
@@ -81,7 +76,7 @@ test:
 		$(IMAGE_NAME) \
 		./docker-build.sh
 
-# Run the full simulation
+# Run the full simulation (one-time)
 .PHONY: simulate
 simulate:
 	@echo "Running GTSAM simulation..."
@@ -89,9 +84,9 @@ simulate:
 		-v $(WORKSPACE_DIR):/workspace \
 		-w /workspace \
 		$(IMAGE_NAME) \
-		bazel run //src:robot_simulation
+		bazel run //src:robot_simulation --enable_workspace
 
-# Run the web interface
+# Run the web interface (one-time)
 .PHONY: web
 web:
 	@echo "Running web interface..."
@@ -100,7 +95,42 @@ web:
 		-v $(WORKSPACE_DIR):/workspace \
 		-w /workspace \
 		$(IMAGE_NAME) \
-		bazel run //src:robot_simulation
+		bazel run //src:robot_simulation --enable_workspace
+
+# Build the web simulation using named container for caching
+.PHONY: web-build
+web-build:
+	@echo "Building web simulation with named container..."
+	@if ! docker ps -q -f name=$(WEB_CONTAINER_NAME) | grep -q .; then \
+		echo "Web container not running. Starting new container..."; \
+		docker run -d --name $(WEB_CONTAINER_NAME) \
+			-v $(WORKSPACE_DIR):/workspace \
+			-w /workspace \
+			$(IMAGE_NAME) \
+			sleep infinity; \
+	else \
+		echo "Web container already running. Using existing container..."; \
+	fi
+	@echo "Building project in container..."
+	docker exec $(WEB_CONTAINER_NAME) bazel build //src:robot_simulation --enable_workspace
+	@echo "Build complete. Container $(WEB_CONTAINER_NAME) is running for future use."
+
+# Run the web simulation using the named container
+.PHONY: web-run
+web-run:
+	@echo "Running web simulation from named container..."
+	@if ! docker ps -q -f name=$(WEB_CONTAINER_NAME) | grep -q .; then \
+		echo "Web container not running. Run 'make web-build' first."; \
+		exit 1; \
+	fi
+	docker exec -p 8080:8080 $(WEB_CONTAINER_NAME) bazel run //src:robot_simulation --enable_workspace
+
+# Stop the web container
+.PHONY: web-stop
+web-stop:
+	@echo "Stopping web container..."
+	-docker stop $(WEB_CONTAINER_NAME) 2>/dev/null || true
+	-docker rm $(WEB_CONTAINER_NAME) 2>/dev/null || true
 
 # Show container logs
 .PHONY: logs
@@ -110,4 +140,7 @@ logs:
 # Show running containers
 .PHONY: ps
 ps:
-	docker ps -a | grep $(CONTAINER_NAME) || echo "No containers found"
+	@echo "Development containers:"
+	@docker ps -a | grep $(CONTAINER_NAME) || echo "No development containers found"
+	@echo "Web containers:"
+	@docker ps -a | grep $(WEB_CONTAINER_NAME) || echo "No web containers found"
