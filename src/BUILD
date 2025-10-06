@@ -19,8 +19,8 @@ cc_library(
     hdrs = ["gtsam_integrator.h"],
     deps = [
         "//src/odometry:odometry",
-        "//:gtsam_system",
-        "//:eigen_system",
+        "@gtsam//:gtsam",
+        "@eigen//:eigen",
     ],
     visibility = ["//visibility:public"],
 )
@@ -36,7 +36,7 @@ cc_library(
     name = "web_ui",
     srcs = ["web_ui.cpp"],
     hdrs = ["web_ui.h"],
-    deps = ["//:boost_system"],
+    deps = ["@boost//:boost"],
     visibility = ["//visibility:public"],
 )
 
@@ -44,7 +44,7 @@ cc_library(
 cc_binary(
     name = "robot_simulation",
     srcs = ["main.cpp"],
-    copts = ["-std=c++11"],
+    copts = ["-std=c++17"],
     deps = [
         "//src/sensors:sensors",
         "//src/odometry:odometry",

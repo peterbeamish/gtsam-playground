@@ -2,7 +2,7 @@ cc_library(
     name = "web_ui",
     srcs = ["web_ui.cpp"],
     hdrs = ["web_ui.h"],
-    deps = ["//:boost_system"],
+    deps = ["@boost//:boost"],
     visibility = ["//visibility:public"],
 )
 
