@@ -1,4 +1,6 @@
-module(
-    name = "gtsam_playground",
-    version = "1.0.0",
-)
+###############################################################################
+# Bazel now uses Bzlmod by default to manage external dependencies.
+# Please consider migrating your external dependencies from WORKSPACE to MODULE.bazel.
+#
+# For more details, please check https://github.com/bazelbuild/bazel/issues/18958
+###############################################################################
