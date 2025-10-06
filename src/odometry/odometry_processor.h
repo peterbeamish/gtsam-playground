@@ -2,15 +2,6 @@
 
 #include "../sensors/sensor_simulator.h"
 
-struct OdometryData {
-    double x;
-    double y;
-    double theta;
-    double linear_velocity;
-    double angular_velocity;
-    std::chrono::steady_clock::time_point timestamp;
-};
-
 class OdometryProcessor {
 public:
     OdometryProcessor(double wheel_base = 0.5, double wheel_radius = 0.1);
