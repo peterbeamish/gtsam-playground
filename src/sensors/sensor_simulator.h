@@ -49,12 +49,15 @@ public:
                    double lag_mean_ms = 0.0, double lag_std_ms = 0.0);
     
     void updateOdometry(const OdometryData& odom_data);
-    LidarData getLidarData();
+    LidarData getLidarData(const OdometryData& odom_data);
     
     // Sensor control methods
     void enable();
     void disable();
     bool isEnabled() const { return enabled_; }
+    
+    // Settings update
+    void setLagSettings(double threshold, double factor);
     
     // Confidence calculation
     double calculateConfidence(double x, double y) const;
@@ -79,6 +82,8 @@ private:
     // Lag configuration
     double lag_mean_ms_;
     double lag_std_ms_;
+    double lag_threshold_;  // Speed threshold above which lag increases
+    double lag_factor_;     // Factor by which lag increases above threshold
     std::normal_distribution<double> lag_dist_;
     
     // Bias configuration for low-confidence areas

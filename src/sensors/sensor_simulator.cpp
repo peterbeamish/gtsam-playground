@@ -1,5 +1,6 @@
 #include "sensor_simulator.h"
 #include <iostream>
+#include <cmath>
 
 WheelEncoderSimulator::WheelEncoderSimulator(double wheel_base, double wheel_radius)
     : wheel_base_(wheel_base), wheel_radius_(wheel_radius),
@@ -41,6 +42,7 @@ LidarSimulator::LidarSimulator(double update_rate, double noise_std,
       noise_std_(noise_std), rng_(std::random_device{}()), 
       noise_dist_(0.0, noise_std),
       lag_mean_ms_(lag_mean_ms), lag_std_ms_(lag_std_ms),
+      lag_threshold_(1.25), lag_factor_(1.0),  // Default values
       lag_dist_(lag_mean_ms, lag_std_ms),
       bias_x_(0.0), bias_y_(0.0), bias_theta_(0.0), bias_active_(false),
       bias_start_time_(std::chrono::steady_clock::now()),
@@ -91,7 +93,7 @@ void LidarSimulator::updateOdometry(const OdometryData& odom_data) {
     last_odom_timestamp_ = now;
 }
 
-LidarData LidarSimulator::getLidarData() {
+LidarData LidarSimulator::getLidarData(const OdometryData& odom_data) {
     LidarData data;
     
     if (!enabled_) {
@@ -118,8 +120,20 @@ LidarData LidarSimulator::getLidarData() {
     if (elapsed >= (1000.0 / update_rate_)) {
         last_update_ = now;
         
-        // Simulate lag by using pose data from the past
-        double lag_ms = lag_dist_(rng_); // Generate random lag
+        // Calculate current speed from odometry data
+        double current_speed = std::sqrt(odom_data.linear_velocity * odom_data.linear_velocity + 
+                                       odom_data.angular_velocity * odom_data.angular_velocity);
+        
+        // Adjust lag based on speed threshold
+        double base_lag_ms = lag_dist_(rng_); // Generate base random lag
+        double lag_ms = base_lag_ms;
+        
+        if (current_speed > lag_threshold_) {
+            // Increase lag when speed exceeds threshold
+            double speed_factor = (current_speed - lag_threshold_) / lag_threshold_;
+            lag_ms = base_lag_ms * (1.0 + speed_factor * lag_factor_);
+        }
+        
         auto lagged_time = now - std::chrono::milliseconds(static_cast<int>(lag_ms));
         
         // Use cached pose if lag is within reasonable bounds, otherwise use current pose
@@ -183,6 +197,11 @@ void LidarSimulator::enable() {
 void LidarSimulator::disable() {
     enabled_ = false;
     std::cout << "LiDAR sensor disabled" << std::endl;
+}
+
+void LidarSimulator::setLagSettings(double threshold, double factor) {
+    lag_threshold_ = threshold;
+    lag_factor_ = factor;
 }
 
 double LidarSimulator::calculateConfidence(double x, double y) const {
