@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iostream>
 #include <iomanip>
+#include <limits>
 
 GTSAMIntegrator::GTSAMIntegrator(size_t max_window_size) 
     : pose_count_(0), max_window_size_(max_window_size), window_start_index_(0), global_pose_counter_(0) {
@@ -88,31 +89,52 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     
     auto current_time = std::chrono::steady_clock::now();
     
-    // Check if this is fresh LiDAR data (within last 500ms for 10Hz sensor)
+    // Use timestamp-based approach instead of hard cutoff
+    // Find the closest pose in time to the LiDAR measurement
+    gtsam::Key closest_pose_key = getPoseKey(global_pose_counter_ > 0 ? global_pose_counter_ - 1 : 0);
+    double min_time_diff = std::numeric_limits<double>::max();
+    
+    // Search through recent poses to find the closest in time
+    for (const auto& timestamp_pair : timestamp_to_key_) {
+        auto time_diff = std::chrono::duration_cast<std::chrono::milliseconds>(
+            lidar_data.timestamp - timestamp_pair.first).count();
+        double abs_time_diff = std::abs(time_diff);
+        
+        if (abs_time_diff < min_time_diff) {
+            min_time_diff = abs_time_diff;
+            closest_pose_key = timestamp_pair.second;
+        }
+    }
+    
+    // Only skip if the data is extremely stale (more than 2 seconds old)
     auto time_since_lidar = std::chrono::duration_cast<std::chrono::milliseconds>(
         current_time - lidar_data.timestamp).count();
     
-    if (time_since_lidar > 500) {
-        // LiDAR data is stale (sensor likely disabled), don't add to graph
-        std::cout << "LiDAR data is stale (" << time_since_lidar << "ms old), skipping measurement" << std::endl;
+    if (time_since_lidar > 2000) {
+        // LiDAR data is extremely stale, don't add to graph
+        std::cout << "LiDAR data is extremely stale (" << time_since_lidar << "ms old), skipping measurement" << std::endl;
         return;
     }
     
-    // Find the closest pose in time (simplified - use the latest pose)
-    gtsam::Key closest_pose_key = getPoseKey(global_pose_counter_ > 0 ? global_pose_counter_ - 1 : 0);
+    // Use the closest pose in time rather than just the latest
+    std::cout << "Using LiDAR data with " << min_time_diff << "ms time difference from closest pose" << std::endl;
     gtsam::Pose2 lidar_pose(lidar_data.x, lidar_data.y, lidar_data.theta);
     
     // Add measurement factor for lidar (soft constraint, not overriding the pose)
-    // Use confidence-based noise model - lower confidence = higher noise
+    // Use confidence-based and time-based noise model
     double base_noise_x = 0.5;
     double base_noise_y = 0.5;
     double base_noise_theta = 0.1;
     
     // Scale noise inversely with confidence (confidence 0.2 = 5x noise, confidence 1.0 = 1x noise)
-    double noise_scale = 1.0 / std::max(lidar_data.confidence, 0.1); // Prevent division by zero
-    double scaled_noise_x = base_noise_x * noise_scale;
-    double scaled_noise_y = base_noise_y * noise_scale;
-    double scaled_noise_theta = base_noise_theta * noise_scale;
+    double confidence_scale = 1.0 / std::max(lidar_data.confidence, 0.1); // Prevent division by zero
+    
+    // Scale noise based on time difference - older data gets higher noise
+    double time_scale = 1.0 + (min_time_diff / 1000.0); // Add 1x noise per second of time difference
+    
+    double scaled_noise_x = base_noise_x * confidence_scale * time_scale;
+    double scaled_noise_y = base_noise_y * confidence_scale * time_scale;
+    double scaled_noise_theta = base_noise_theta * confidence_scale * time_scale;
     
     auto confidence_lidar_noise = gtsam::noiseModel::Diagonal::Sigmas(
         gtsam::Vector3(scaled_noise_x, scaled_noise_y, scaled_noise_theta));
@@ -120,7 +142,9 @@ void GTSAMIntegrator::addLidarMeasurement(const LidarData& lidar_data) {
     
     std::cout << "Added LiDAR measurement for pose " << (pose_count_ - 1) 
               << ": " << lidar_pose << " (confidence: " << (lidar_data.confidence * 100) 
-              << "%, noise scale: " << noise_scale << ")" << std::endl;
+              << "%, confidence scale: " << confidence_scale 
+              << ", time scale: " << time_scale 
+              << ", total noise scale: " << (confidence_scale * time_scale) << ")" << std::endl;
     
     optimizeGraph();
 }
