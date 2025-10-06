@@ -198,7 +198,7 @@ std::string SimpleWebUI::generateHTML() {
     html << "                <div class=\"sensor-data\">\n";
     html << "                    <div>X: <span class=\"value\" id=\"lidar-x\">0.00</span> m</div>\n";
     html << "                    <div>Y: <span class=\"value\" id=\"lidar-y\">0.00</span> m</div>\n";
-        html << "                    <div>theta: <span class=\"value\" id=\"lidar-theta\">0.00</span>°</div>\n";
+        html << "                    <div>theta: <span class=\"value\" id=\"lidar-theta\">0.00</span> deg</div>\n";
     html << "                    <div>Confidence: <span class=\"value\" id=\"lidar-confidence\">100</span>%</div>\n";
     html << "                </div>\n";
     html << "            </div>\n";
@@ -208,7 +208,7 @@ std::string SimpleWebUI::generateHTML() {
     html << "                <div class=\"sensor-data\">\n";
     html << "                    <div>X: <span class=\"value\" id=\"odom-x\">0.00</span> m</div>\n";
     html << "                    <div>Y: <span class=\"value\" id=\"odom-y\">0.00</span> m</div>\n";
-        html << "                    <div>theta: <span class=\"value\" id=\"odom-theta\">0.00</span>°</div>\n";
+        html << "                    <div>theta: <span class=\"value\" id=\"odom-theta\">0.00</span> deg</div>\n";
     html << "                </div>\n";
     html << "            </div>\n";
     html << "            \n";
@@ -217,7 +217,7 @@ std::string SimpleWebUI::generateHTML() {
             html << "                <div class=\"sensor-data\">\n";
             html << "                    <div>X: <span class=\"value\" id=\"robot-x\">0.00</span> m</div>\n";
             html << "                    <div>Y: <span class=\"value\" id=\"robot-y\">0.00</span> m</div>\n";
-            html << "                    <div>theta: <span class=\"value\" id=\"robot-theta\">0.00</span>°</div>\n";
+            html << "                    <div>theta: <span class=\"value\" id=\"robot-theta\">0.00</span> deg</div>\n";
             html << "                    <div>Cov XX: <span class=\"value\" id=\"cov-xx\">0.00</span></div>\n";
             html << "                    <div>Cov YY: <span class=\"value\" id=\"cov-yy\">0.00</span></div>\n";
             html << "                    <div>Cov theta: <span class=\"value\" id=\"cov-tt\">0.00</span></div>\n";
