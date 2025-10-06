@@ -140,7 +140,7 @@ LidarData LidarSimulator::getLidarData() {
         
         // Calculate confidence first to determine noise level
         double confidence = calculateConfidence(data.x, data.y);
-        double noise_scale = (confidence < 0.5) ? 3.0 : 1.0;  // 3x noise in low-confidence areas
+        double noise_scale = (confidence < 0.5) ? 2.0 : 1.0;  // 2x noise in low-confidence areas
         
         // Apply noise with confidence-based scaling
         data.x += noise_dist_(rng_) * noise_scale;
@@ -217,9 +217,13 @@ void LidarSimulator::updateBias(double x, double y) {
     
     if (in_low_conf_area && !bias_active_) {
         // Entering low-confidence area - generate new bias values
-        bias_x_ = (rng_() % 200 - 100) / 100.0;  // Random bias between -1.0 and 1.0 meters
-        bias_y_ = (rng_() % 200 - 100) / 100.0;  // Random bias between -1.0 and 1.0 meters
-        bias_theta_ = (rng_() % 360 - 180) * M_PI / 180.0;  // Random bias between -180 and 180 degrees
+        // More realistic bias: max 1m in x/y, max 15 degrees in theta
+        std::uniform_real_distribution<double> bias_dist_xy(-1.0, 1.0);
+        std::uniform_real_distribution<double> bias_dist_theta(-15.0, 15.0);
+        
+        bias_x_ = bias_dist_xy(rng_);  // Random bias between -1.0 and 1.0 meters
+        bias_y_ = bias_dist_xy(rng_);  // Random bias between -1.0 and 1.0 meters
+        bias_theta_ = bias_dist_theta(rng_) * M_PI / 180.0;  // Random bias between -15 and 15 degrees
         bias_active_ = true;
         bias_start_time_ = std::chrono::steady_clock::now();
         std::cout << "LiDAR bias activated: (" << bias_x_ << ", " << bias_y_ << ", " 
