@@ -114,6 +114,11 @@ private:
         Timer total_timer;
         total_timer.start();
         
+        // Update robot controller with current settings from WebUI
+        ControlSettings settings = web_ui_->getControlSettings();
+        robot_controller_->setMaxSpeed(settings.max_speed, settings.max_speed); // Use same for linear and angular
+        robot_controller_->setAcceleration(settings.acceleration);
+        
         // Update robot state (only velocities, position comes from GTSAM)
         RobotState robot_state = robot_controller_->updateState();
         
@@ -136,8 +141,11 @@ private:
         // Update LiDAR with odometry data (LiDAR simulates absolute position from odometry)
         lidar_->updateOdometry(odom_data);
         
+        // Update LiDAR lag settings from WebUI
+        lidar_->setLagSettings(settings.lidar_lag_threshold, settings.lidar_lag_factor);
+        
         // Get LiDAR data (at lower rate with noise)
-        LidarData lidar_data = lidar_->getLidarData();
+        LidarData lidar_data = lidar_->getLidarData(odom_data);
         
         // Store independent sensor data
         current_odometry_ = odom_data;
